@@ -1,0 +1,162 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user profile information, roles, and community vetting data.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "anonymousName": { "type": "string" },
+        "natureIcon": { "type": "string", "description": "Lucide icon name" },
+        "role": { "type": "string", "enum": ["neighbor", "business", "admin"] },
+        "streetName": { "type": "string", "description": "Verified ALT street name" },
+        "favorites": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "streetName"]
+    },
+    "Business": {
+      "title": "Business Listing",
+      "description": "Detailed information about a registered business.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "logo": { "type": "string", "format": "uri" },
+        "photos": { "type": "array", "items": { "type": "string", "format": "uri" }, "maxItems": 3 },
+        "services": { "type": "array", "items": { "type": "string" } },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "verified": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerUid", "name", "category"]
+    },
+    "Review": {
+      "title": "Business Review",
+      "description": "Reviews left by neighbors for businesses.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "businessId": { "type": "string" },
+        "userUid": { "type": "string" },
+        "rating": { "type": "number" },
+        "comment": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["businessId", "userUid", "rating"]
+    },
+    "HelpOffer": {
+      "title": "Help Offer",
+      "description": "Neighbors offering help in specific capacities.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userUid": { "type": "string" },
+        "capacity": { "type": "string" },
+        "description": { "type": "string" },
+        "contactPreference": { "type": "string", "description": "How the neighbor prefers to be contacted" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userUid", "capacity"]
+    },
+    "Resource": {
+      "title": "Community Resource",
+      "description": "Free resources or services offered by businesses to neighbors.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "businessId": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "businessName": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "type": { "type": "string", "enum": ["resource", "service"] },
+        "quantity": { "type": "number", "description": "Number of items available", "default": 1 },
+        "claimedBy": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["businessId", "title", "type"]
+    },
+    "Event": {
+      "title": "Community Event",
+      "description": "Events scheduled by businesses or residents.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "creatorUid": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "time": { "type": "string" },
+        "location": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["creatorUid", "title", "date"]
+    },
+    "AssistanceRequest": {
+      "title": "Assistance Request",
+      "description": "Requests for help from neighbors in need.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userUid": { "type": "string" },
+        "userName": { "type": "string" },
+        "streetName": { "type": "string" },
+        "isAnonymous": { "type": "boolean", "description": "Whether to hide the real user name" },
+        "natureIcon": { "type": "string", "description": "Icon associated with the user" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "contactPreference": { "type": "string", "description": "Instructions for providing help" },
+        "status": { "type": "string", "enum": ["open", "in-progress", "resolved"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userUid", "title", "description", "status"]
+    },
+    "Issue": {
+      "title": "Community Issue Report",
+      "description": "Reports of website bugs or questionable behavior.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userUid": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "type": { "type": "string", "enum": ["bug", "behavior"] },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "resolved"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userUid", "type", "description", "status"]
+    },
+    "ClubInfo": {
+      "title": "Club Information",
+      "description": "Public-facing information about the A.B.C Club.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "mission": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "website": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": { "schema": "User", "description": "User profiles" },
+    "/businesses/{businessId}": { "schema": "Business", "description": "Business listings" },
+    "/reviews/{reviewId}": { "schema": "Review", "description": "Business reviews" },
+    "/helpOffers/{offerId}": { "schema": "HelpOffer", "description": "Community help offers" },
+    "/resources/{resourceId}": { "schema": "Resource", "description": "Free community resources" },
+    "/events/{eventId}": { "schema": "Event", "description": "Community events" },
+    "/assistanceRequests/{requestId}": { "schema": "AssistanceRequest", "description": "Neighbor help requests" },
+    "/issues/{issueId}": { "schema": "Issue", "description": "Community issue reports" },
+    "/site/club": { "schema": "ClubInfo", "description": "Global club information" }
+  }
+}

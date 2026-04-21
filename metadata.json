@@ -1,0 +1,6 @@
+{
+  "name": "ALT Business Connections",
+  "description": "A community-focused PWA/SaaS platform blending Nextdoor and Yelp features. Enables business listings, resource sharing, community messaging, and event management with a verified business verification system.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": []
+}

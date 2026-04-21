@@ -1,0 +1,175 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Fields:
+//   - uid: string (required, immutable)
+//   - email: string (required, PII)
+//   - displayName: string (required)
+//   - photoURL: string (optional)
+//   - role: string (required, enum: ['neighbor', 'business', 'admin'])
+//   - bio: string (optional)
+//   - createdAt: timestamp (required, immutable)
+//
+// Collection: businesses
+// Fields:
+//   - ownerUid: string (required, immutable)
+//   - name: string (required)
+//   - category: string (required)
+//   - description: string (required)
+//   - verified: bool (required, admin-only update)
+//
+// [Other collections follow similar patterns]
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'master-admin'] ||
+         (request.auth.token.email == "growlocalcreative@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'email', 'displayName', 'role', 'streetName']) &&
+             data.uid == request.auth.uid &&
+             isValidEmail(data.email) &&
+             data.role in ['neighbor', 'business', 'admin'] &&
+             data.streetName is string && data.streetName.size() < 100 &&
+             (!('natureIcon' in data) || data.natureIcon is string) &&
+             (!('anonymousName' in data) || data.anonymousName is string);
+    }
+
+    function isValidBusiness(data) {
+      return hasRequiredFields(['ownerUid', 'name', 'category', 'description']) &&
+             data.ownerUid == request.auth.uid &&
+             data.name is string && data.name.size() < 100 &&
+             data.category is string &&
+             data.description is string && data.description.size() < 1000 &&
+             (!('photos' in data) || (data.photos is list && data.photos.size() <= 3));
+    }
+
+    function isValidReview(data) {
+      return hasRequiredFields(['businessId', 'userUid', 'rating']) &&
+             data.userUid == request.auth.uid &&
+             data.rating is number && data.rating >= 1 && data.rating <= 5;
+    }
+
+    function isValidIssue(data) {
+      return hasRequiredFields(['userUid', 'type', 'description', 'status', 'createdAt']) &&
+             data.userUid == request.auth.uid &&
+             data.type in ['bug', 'behavior'] &&
+             data.description is string && data.description.size() <= 2000 &&
+             data.status == 'open';
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      // Admin can do anything
+      allow read, write: if isAdmin();
+      
+      // User can read their own profile, others can read non-PII if we separate it
+      // For now, allow read if authenticated for directory purposes (but hide email in UI)
+      allow read: if isAuthenticated();
+      
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
+                    (request.resource.data.role != 'admin' || isAdmin());
+                    
+      allow update: if isAuthenticated() && isOwner(userId) && 
+                    isValidUser(request.resource.data) &&
+                    request.resource.data.role == resource.data.role;
+    }
+
+    match /businesses/{businessId} {
+      allow read: if true;
+      allow write: if isAdmin();
+      
+      allow create: if isAuthenticated() && isValidBusiness(request.resource.data);
+      
+      allow update: if isAuthenticated() && isOwner(resource.data.ownerUid) &&
+                    isValidBusiness(request.resource.data) &&
+                    request.resource.data.verified == resource.data.verified;
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow write: if isAdmin();
+      allow create: if isAuthenticated() && isValidReview(request.resource.data);
+      allow update, delete: if isAuthenticated() && isOwner(resource.data.userUid);
+    }
+
+    match /helpOffers/{offerId} {
+      allow read: if true;
+      allow write: if isAdmin();
+      allow create: if isAuthenticated() && request.resource.data.userUid == request.auth.uid;
+      allow update, delete: if isAuthenticated() && isOwner(resource.data.userUid);
+    }
+
+    match /resources/{resourceId} {
+      allow read: if true;
+      allow write: if isAdmin();
+      allow create: if isAuthenticated() && request.resource.data.businessId != null;
+      allow update: if isAuthenticated() && (
+        isOwner(resource.data.businessId) || 
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimedBy']))
+      );
+      allow delete: if isAuthenticated() && isOwner(resource.data.businessId);
+    }
+
+    match /events/{eventId} {
+      allow read: if true;
+      allow write: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && isOwner(resource.data.creatorUid);
+    }
+
+    match /assistanceRequests/{requestId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && isOwner(resource.data.userUid);
+    }
+
+    match /issues/{issueId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated() && isValidIssue(request.resource.data);
+      allow update, delete: if isAdmin();
+    }
+
+    match /site/club {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

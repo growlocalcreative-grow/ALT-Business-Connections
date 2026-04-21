@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+@theme {
+  --color-sage: #8d967a; /* Updated to your specific Sage */
+  --color-sand: #E6D5B8;
+  --color-forest: #2D4030;
+  --color-paper: #FDFCF9;
+  --color-ink: #1F2421;
+  
+  --font-sans: "Helvetica Neue", Arial, sans-serif;
+  --font-serif: "Georgia", serif;
+}
+
+@layer base {
+  body {
+    @apply bg-sage text-ink font-sans; /* Changed bg-sand to bg-sage */
+  }
+}
