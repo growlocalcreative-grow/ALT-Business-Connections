@@ -36,6 +36,17 @@ export default function Onboarding() {
   });
   const navigate = useNavigate();
 
+  // Auto-progress if already logged in but missing profile
+  React.useEffect(() => {
+    if (user && !loading) {
+      if (profile) {
+        navigate("/dashboard");
+      } else if (step === "login") {
+        setStep("vetting");
+      }
+    }
+  }, [user, profile, loading, step, navigate]);
+
   const handleLogin = async () => {
     setIsProcessing(true);
     try {
@@ -51,7 +62,7 @@ export default function Onboarding() {
       } else {
         setStep("vetting");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login failed:", error);
     } finally {
       setIsProcessing(false);
@@ -118,13 +129,27 @@ export default function Onboarding() {
               >
                 {isProcessing ? <Loader2 className="animate-spin" size={18} /> : "Sign in with Google"}
               </button>
-              <div className="mt-6 text-center">
+              <div className="mt-6 flex flex-col gap-4 text-center">
                 <button 
                   onClick={handleLogin}
                   className="text-[10px] uppercase tracking-widest text-sage font-bold hover:text-forest transition-colors"
                 >
                   Already have an account? Log In
                 </button>
+                <div className="pt-4 border-t border-sand/50">
+                  <button 
+                    onClick={() => {
+                      localStorage.clear();
+                      sessionStorage.clear();
+                      auth.signOut().then(() => {
+                        window.location.reload();
+                      });
+                    }}
+                    className="text-[10px] uppercase tracking-widest text-red-400 hover:text-red-600 font-bold transition-colors"
+                  >
+                    Trouble Logging In? Reset Entire Session
+                  </button>
+                </div>
               </div>
             </motion.div>
           )}

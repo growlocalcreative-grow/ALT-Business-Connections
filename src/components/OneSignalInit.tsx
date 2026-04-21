@@ -15,11 +15,8 @@ export default function OneSignalInit() {
       }).then(() => {
         console.log('OneSignal Initialized');
       }).catch((err) => {
-        // If it's already initialized, we can ignore this specific error
-        if (err?.message?.includes('already initialized')) {
-          return;
-        }
-        console.error('OneSignal Init Error:', err);
+        // Log to console but don't crash or alert
+        console.warn('OneSignal Init (Non-critical):', err?.message || err);
       });
     }
   }, []);

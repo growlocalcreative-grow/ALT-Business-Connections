@@ -11,8 +11,37 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   Building2, Phone, Mail, Globe, MapPin, 
   ArrowLeft, Star, Clock, CheckCircle2, 
-  Plus, Loader2, Camera, ShieldCheck, MessageSquare, X
+  Plus, Loader2, Camera, ShieldCheck, MessageSquare, X,
+  Zap, LifeBuoy, Search, Palette, Utensils, Heart, Hammer, Briefcase, GraduationCap, Leaf, Sparkles
 } from "lucide-react";
+
+const SERVICE_ICONS: Record<string, any> = {
+  'Technology': Zap,
+  'Digital Consulting': Zap,
+  'Website Rescue': LifeBuoy,
+  'Google Set-up': Search,
+  'Art': Palette,
+  'Creative': Palette,
+  'Food': Utensils,
+  'Health': Heart,
+  'Wellness': Heart,
+  'Services': Hammer,
+  'Garden': Leaf,
+  'Education': GraduationCap,
+  'Business': Briefcase,
+  'Professional': Briefcase
+};
+
+function ServiceTag({ label, key }: { label: string, key?: any }) {
+  const Icon = SERVICE_ICONS[label] || SERVICE_ICONS[Object.keys(SERVICE_ICONS).find(k => label.includes(k)) || ""] || Sparkles;
+  
+  return (
+    <span key={key} className="inline-flex items-center gap-1.5 px-4 py-2 bg-sand/30 text-forest rounded-full text-xs font-bold border border-sand/50 shadow-sm hover:-translate-y-0.5 transition-transform cursor-default">
+      <Icon size={14} className="text-forest/70" />
+      {label}
+    </span>
+  );
+}
 import GlobalNav from "../components/GlobalNav";
 import { useUser } from "../contexts/UserContext";
 
@@ -131,35 +160,33 @@ export default function BusinessProfile() {
     <div className="min-h-screen bg-sand flex flex-col p-[32px] md:p-[60px]">
       <GlobalNav />
       
-      <main className="flex-1 p-2 md:p-12">
+      <main className="flex-1 p-2 md:p-12 w-full max-w-[calc(100vw-2rem)] mx-auto md:max-w-none">
         <div className="max-w-6xl mx-auto space-y-12">
           {/* Header Section */}
-          <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-8 pb-12 border-b-2 border-forest/10">
-            <div className="flex items-center gap-8">
-              <Link to="/dashboard" className="p-4 bg-paper border-2 border-forest/10 rounded-2xl text-forest hover:bg-forest hover:text-paper transition-all shadow-sm">
-                <ArrowLeft size={24} />
+          <header className="flex flex-col md:flex-row justify-between items-center md:items-end gap-10 pb-12 border-b-2 border-forest/10">
+            <div className="flex flex-col md:flex-row items-center md:items-start gap-6 md:gap-10 w-full min-w-0">
+              <Link to="/dashboard" className="p-3 md:p-4 bg-paper border-2 border-forest/10 rounded-2xl text-forest hover:bg-forest hover:text-paper transition-all shadow-sm flex-shrink-0 self-start md:self-auto">
+                <ArrowLeft size={20} className="md:w-6 md:h-6" />
               </Link>
-              <div className="flex items-center gap-6">
+              <div className="flex flex-col md:flex-row items-center md:items-start gap-4 md:gap-8 min-w-0 flex-1">
                 {business.logo ? (
-                  <img src={business.logo} alt={business.name} className="w-24 h-24 rounded-[32px] object-cover border-4 border-paper shadow-xl ring-2 ring-forest/5" referrerPolicy="no-referrer" />
+                  <img src={business.logo} alt={business.name} className="w-24 h-24 md:w-32 md:h-32 rounded-[32px] object-cover border-4 border-paper shadow-xl ring-2 ring-forest/5 flex-shrink-0" referrerPolicy="no-referrer" />
                 ) : (
-                  <div className="w-24 h-24 rounded-[32px] bg-paper border-4 border-paper shadow-xl ring-2 ring-forest/5 flex items-center justify-center text-forest">
-                    <Building2 size={48} />
+                  <div className="w-24 h-24 md:w-32 md:h-32 rounded-[32px] bg-paper border-4 border-paper shadow-xl ring-2 ring-forest/5 flex items-center justify-center text-forest flex-shrink-0">
+                    <Building2 size={40} className="md:w-16 md:h-16" />
                   </div>
                 )}
-                <div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <h1 className="text-4xl md:text-5xl font-serif text-forest">{business.name}</h1>
+                <div className="min-w-0 flex-1 flex flex-col items-center md:items-start text-center md:text-left">
+                  <div className="flex items-center justify-center md:justify-start gap-2 md:gap-3 mb-3 min-w-0 w-full">
+                    <h1 className="text-3xl md:text-5xl font-serif text-forest truncate max-w-[80vw] md:max-w-none">{business.name}</h1>
                     {business.verified && (
-                      <ShieldCheck className="text-forest" size={28} />
+                      <ShieldCheck className="text-forest flex-shrink-0 md:w-8 md:h-8" size={24} />
                     )}
                   </div>
-                  <div className="flex flex-wrap gap-3">
-                    <span className="px-3 py-1 bg-forest text-paper text-[10px] font-bold uppercase tracking-widest rounded-full">
-                      {business.category}
-                    </span>
+                  <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 md:gap-3 w-full">
+                    <ServiceTag label={business.category} />
                     {business.verified && (
-                      <span className="px-3 py-1 bg-amber-100 text-amber-800 text-[10px] font-bold uppercase tracking-widest rounded-full border border-amber-200">
+                      <span className="px-4 py-2 bg-amber-100 text-amber-800 text-[10px] font-bold uppercase tracking-widest rounded-full border border-amber-200 shadow-sm hover:-translate-y-0.5 transition-transform cursor-default">
                         Verified Partner
                       </span>
                     )}
@@ -181,10 +208,10 @@ export default function BusinessProfile() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
             {/* Left Column: Details */}
-            <div className="lg:col-span-2 space-y-12">
-              <section className="bg-paper p-10 rounded-[40px] border-2 border-black/5 shadow-sm">
-                <h2 className="text-2xl font-serif text-forest mb-6">About the Business</h2>
-                <p className="text-ink/80 text-lg leading-relaxed font-medium">
+            <div className="lg:col-span-2 space-y-12 min-w-0 w-full overflow-hidden">
+              <section className="bg-paper p-6 md:p-10 rounded-[40px] border-2 border-black/5 shadow-sm overflow-hidden">
+                <h2 className="text-2xl font-serif text-forest mb-6 truncate">About {business.name}</h2>
+                <p className="text-ink/80 text-base md:text-lg leading-relaxed font-medium whitespace-normal break-words">
                   {business.description || "No description provided."}
                 </p>
                 
@@ -193,9 +220,7 @@ export default function BusinessProfile() {
                     <h3 className="text-[10px] font-bold text-sage uppercase tracking-widest mb-4">Core Services</h3>
                     <div className="flex flex-wrap gap-2">
                       {business.services.map((s: string, i: number) => (
-                        <span key={i} className="px-4 py-2 bg-sand text-forest rounded-xl text-xs font-bold border border-forest/5 shadow-sm">
-                          {s}
-                        </span>
+                        <ServiceTag key={i} label={s} />
                       ))}
                     </div>
                   </div>
@@ -405,15 +430,15 @@ function ResourceItem({ resource, isClaimed, onClaim, isLoading, isOwner }: { re
   const isAvailable = (resource.quantity || 1) > claimCount;
 
   return (
-    <div className="bg-paper p-6 rounded-3xl border-2 border-sage/10 flex flex-col md:flex-row justify-between items-center gap-6 shadow-sm hover:shadow-md transition-all">
-      <div className="flex-1">
-        <div className="flex items-center gap-3 mb-2">
-          <h4 className="font-serif text-xl text-forest">{resource.title}</h4>
-          <span className={`px-2 py-0.5 text-[8px] font-bold rounded-full uppercase tracking-widest ${isAvailable ? 'bg-forest/10 text-forest border border-forest/20' : (isClaimed ? 'bg-forest/10 text-forest border border-forest/20' : 'bg-red-50 text-red-500 border border-red-100')}`}>
+    <div className="bg-paper p-6 rounded-3xl border-2 border-sage/10 flex flex-col md:flex-row justify-between items-center gap-6 shadow-sm hover:shadow-md transition-all overflow-hidden">
+      <div className="flex-1 min-w-0 w-full">
+        <div className="flex items-center flex-wrap gap-3 mb-2 min-w-0">
+          <h4 className="font-serif text-xl text-forest truncate">{resource.title}</h4>
+          <span className={`px-2 py-0.5 text-[8px] font-bold rounded-full uppercase tracking-widest flex-shrink-0 ${isAvailable ? 'bg-forest/10 text-forest border border-forest/20' : (isClaimed ? 'bg-forest/10 text-forest border border-forest/20' : 'bg-red-50 text-red-500 border border-red-100')}`}>
             {isClaimed ? 'You claimed this' : isAvailable ? `${(resource.quantity || 1) - claimCount} remaining` : 'Fully Claimed'}
           </span>
         </div>
-        <p className="text-sm text-ink/70 font-medium leading-relaxed">{resource.description}</p>
+        <p className="text-sm text-ink/70 font-medium leading-relaxed whitespace-normal break-words">{resource.description}</p>
       </div>
       <div className="flex items-center gap-3 w-full md:w-auto">
         {isOwner ? (

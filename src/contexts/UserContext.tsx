@@ -37,6 +37,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
+    // Debug info
+    console.log("Firebase Active Project:", auth.app.options.projectId);
+    
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setIsAuthReady(true);

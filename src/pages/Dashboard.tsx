@@ -11,8 +11,38 @@ import {
   LogOut, Plus, Search, MapPin, Calendar, MessageSquare, 
   Building2, Users, Info, Heart, Star, Phone, Mail, Camera, Globe,
   TreePine, Leaf, Flower2, Bird, Mountain, Waves, 
-  LayoutDashboard, Shield, ArrowRight, X, Loader2, CheckCircle2, XCircle, AlertTriangle
+  LayoutDashboard, Shield, ArrowRight, X, Loader2, CheckCircle2, XCircle, AlertTriangle,
+  BadgeCheck, HeartHandshake, HouseHeart, MessageSquareHeart, Sparkles, Clock, MessageCircle, ChevronDown,
+  Zap, LifeBuoy, Palette, Utensils, Hammer, Briefcase, GraduationCap
 } from "lucide-react";
+
+const CATEGORY_ICONS: Record<string, any> = {
+  'Technology': Zap,
+  'Digital Consulting': Zap,
+  'Website Rescue': LifeBuoy,
+  'Google Set-up': Search,
+  'Art': Palette,
+  'Creative': Palette,
+  'Food': Utensils,
+  'Health': Heart,
+  'Wellness': Heart,
+  'Services': Hammer,
+  'Garden': Leaf,
+  'Education': GraduationCap,
+  'Business': Briefcase,
+  'Professional': Briefcase
+};
+
+function CategoryTag({ label, small = false }: { label: string, small?: boolean }) {
+  const Icon = CATEGORY_ICONS[label] || CATEGORY_ICONS[Object.keys(CATEGORY_ICONS).find(k => label.includes(k)) || ""] || Sparkles;
+  
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 bg-sand/30 text-forest rounded-full border border-sand/50 shadow-sm hover:-translate-y-0.5 transition-transform truncate max-w-full ${small ? 'text-[6px] font-black tracking-widest' : 'text-[7px] font-black tracking-widest'}`}>
+      <Icon size={small ? 8 : 10} className="text-forest/70 flex-shrink-0" />
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
 import GlobalNav from "../components/GlobalNav";
 import { auth, db } from "../lib/firebase";
 import { signOut } from "firebase/auth";
@@ -69,6 +99,28 @@ export default function Dashboard() {
   const [isOwnerWarningOpen, setIsOwnerWarningOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [isFabOpen, setIsFabOpen] = useState(false);
+
+  const scrollToSection = (tabId: any, sectionId?: string) => {
+    setActiveTab(tabId);
+    if (sectionId) {
+      setTimeout(() => {
+        const element = document.getElementById(sectionId);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 150);
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 17) return "Good afternoon";
+    return "Good evening";
+  };
 
   const UserIcon = profile?.natureIcon ? NATURE_ICONS[profile.natureIcon] : TreePine;
 
@@ -120,6 +172,30 @@ export default function Dashboard() {
       unsubscribeClub();
     };
   }, []);
+
+  // Cleanup expired events
+  useEffect(() => {
+    if (events.length === 0) return;
+
+    const cleanupExpiredEvents = async () => {
+      const today = new Date().toLocaleDateString('en-CA'); // 'yyyy-mm-dd' format
+      const expiredEvents = events.filter(e => e.date && e.date < today);
+      
+      if (expiredEvents.length === 0) return;
+
+      console.log(`Found ${expiredEvents.length} expired events. Cleaning up...`);
+      
+      for (const event of expiredEvents) {
+        try {
+          await deleteDoc(doc(db, "events", event.id));
+        } catch (error) {
+          console.error(`Failed to delete expired event ${event.id}:`, error);
+        }
+      }
+    };
+
+    cleanupExpiredEvents();
+  }, [events]);
 
   const handlePostResource = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -394,14 +470,14 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="min-h-screen bg-sand flex flex-col p-[32px] md:p-[60px]">
+    <div className="min-h-screen bg-sand flex flex-col p-4 md:p-[60px]">
       <GlobalNav />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto p-2 md:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 mt-4">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-8 grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 mt-4">
         
         {/* Left Sidebar - Navigation */}
-        <aside className="lg:col-span-3 space-y-6">
-          <nav className="space-y-1 bg-paper/50 p-2 rounded-[32px] border-2 border-black/5">
+        <aside className="lg:col-span-3 space-y-8">
+          <nav className="hidden lg:block space-y-1 bg-paper/50 p-2 rounded-[32px] border-2 border-black/5">
             <NavItem icon={<LogOut size={18} />} label="Feed" active={activeTab === "feed"} onClick={() => setActiveTab("feed")} />
             <NavItem icon={<MapPin size={18} />} label="Freebies" active={activeTab === "resources"} onClick={() => setActiveTab("resources")} />
             <NavItem icon={<Calendar size={18} />} label="Events" active={activeTab === "events"} onClick={() => setActiveTab("events")} />
@@ -458,73 +534,155 @@ export default function Dashboard() {
         </aside>
 
         {/* Main Content Area */}
-        <section className="lg:col-span-6 space-y-6">
+        <section className="lg:col-span-6 space-y-8">
+          {/* Mobile Category Chips */}
+          <div className="lg:hidden flex flex-col gap-2">
+            <div className="flex overflow-x-auto pb-2 -mx-2 md:mx-0 gap-2 scrollbar-hide no-scrollbar items-center">
+              {[
+                { id: "feed", label: "Feed" },
+                { id: "resources", label: "Freebies" },
+                { id: "events", label: "Events" },
+                { id: "directory", label: "Directory" },
+                { id: "offers", label: "Help" },
+                { id: "club", label: "Club" },
+                ...(profile?.role === "business" ? [{ id: "manage", label: "Manage" }] : [])
+              ].map((chip) => (
+                <button
+                  key={chip.id}
+                  onClick={() => setActiveTab(chip.id as any)}
+                  className={`flex-shrink-0 px-6 py-2.5 rounded-full border-2 font-bold text-[10px] uppercase tracking-widest transition-all ${
+                    activeTab === chip.id 
+                      ? "bg-forest border-forest text-paper shadow-md shadow-forest/20" 
+                      : "border-sage/20 text-sage hover:border-forest/40"
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+            
+            {/* Quick Jump Bar */}
+            <div className="flex overflow-x-auto gap-6 py-3 border-b border-sage/10 scrollbar-hide no-scrollbar -mx-2 md:mx-0 px-2">
+              <button onClick={() => scrollToSection('feed', 'feed-events')} className="whitespace-nowrap text-[9px] font-black text-sage hover:text-forest uppercase tracking-widest transition-colors flex items-center gap-1.5 active:scale-95">
+                <div className="w-1 h-1 bg-forest rounded-full" /> Jump to Events
+              </button>
+              <button onClick={() => scrollToSection('feed', 'feed-resources')} className="whitespace-nowrap text-[9px] font-black text-sage hover:text-forest uppercase tracking-widest transition-colors flex items-center gap-1.5 active:scale-95">
+                <div className="w-1 h-1 bg-forest rounded-full" /> Newest Freebies
+              </button>
+              <button onClick={() => scrollToSection('directory')} className="whitespace-nowrap text-[9px] font-black text-sage hover:text-forest uppercase tracking-widest transition-colors flex items-center gap-1.5 active:scale-95">
+                <div className="w-1 h-1 bg-forest rounded-full" /> Business Directory
+              </button>
+            </div>
+          </div>
+
           {loading ? (
             <div className="flex items-center justify-center py-20"><Loader2 className="animate-spin text-forest" size={48} /></div>
           ) : (
             <AnimatePresence mode="wait">
               {activeTab === "feed" && (
                 <motion.div key="feed" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
-                  <h2 className="text-3xl font-serif text-forest">Neighbor Feed</h2>
+                  <div className="mb-10 pt-8">
+                    <h1 className="text-4xl md:text-5xl font-serif text-forest leading-[1.1] mb-2">
+                      {getGreeting()}, <span className="text-forest/80">{profile?.displayName?.split(' ')[0] || 'Neighbor'}!</span>
+                    </h1>
+                    <div className="w-full pt-3 mt-4 border-t border-sage/20 flex items-center justify-between">
+                      <p className="text-sage/60 text-sm font-sans font-medium tracking-wide">
+                        {events.length} New Events <span className="text-forest mx-1">•</span> {resources.length} Freebies <span className="text-forest mx-1">•</span> {assistanceRequests.length} Help Requests
+                      </p>
+                    </div>
+                  </div>
+                  
                   {resources.length === 0 && events.length === 0 && (
                     <div className="p-12 text-center bg-paper/50 rounded-[40px] border-4 border-dashed border-sage">
                       <p className="font-serif text-xl text-sage">The feed is quiet today. Check back later!</p>
                     </div>
                   )}
-                  {resources.slice(0, 5).map(r => {
-                    const biz = businesses.find(b => b.id === r.businessId || b.ownerUid === r.businessId || b.id === r.id);
-                    return (
-                      <FeedItem 
-                        key={r.id} 
-                        title={r.title} 
-                        business={r.businessName} 
-                        businessId={biz?.id}
-                        description={r.description} 
-                        type={r.type} 
-                        isClaimed={r.claimedBy?.includes(user?.uid)}
-                        onClaim={() => toggleClaim(r.id, r.claimedBy?.includes(user?.uid))}
-                        isLoading={processingId === r.id}
-                        isOwner={r.ownerUid === user?.uid}
-                        phone={biz?.phone}
-                        quantity={r.quantity}
-                      />
-                    );
-                  })}
-                  {helpOffers.slice(0, 5).map(h => {
-                    const offerProfile = allUsers.find(u => u.uid === h.userUid);
-                    return (
-                      <FeedItem 
-                        key={h.id} 
-                        title={`Community Offer: ${h.capacity}`} 
-                        business={h.userName} 
-                        description={h.description} 
-                        type="service" 
-                        contactPreference={h.contactPreference}
-                        natureIcon={h.natureIcon}
-                        streetName={h.streetName}
-                        isClaimed={h.claimedBy?.includes(user?.uid)}
-                        onClaim={() => toggleHelpClaim(h.id, h.claimedBy?.includes(user?.uid))}
-                        isLoading={processingId === h.id}
-                        email={offerProfile?.email}
-                        phone={offerProfile?.phone}
-                        isOwner={h.userUid === user?.uid}
-                      />
-                    );
-                  })}
-                  {events.slice(0, 5).map(e => {
-                    const creator = allUsers.find(u => u.uid === e.creatorUid);
-                    return (
-                      <FeedItem 
-                        key={e.id} 
-                        title={e.title} 
-                        business="Community Event" 
-                        description={e.description} 
-                        type="event" 
-                        email={e.email || creator?.email}
-                        phone={e.phone || creator?.phone}
-                      />
-                    );
-                  })}
+
+                  {resources.length > 0 && (
+                    <div id="feed-resources" className="scroll-mt-32">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="h-px bg-sage/20 flex-1" />
+                        <span className="text-[10px] font-black text-sage uppercase tracking-[0.2em]">Newest Freebies</span>
+                        <div className="h-px bg-sage/20 flex-1" />
+                      </div>
+                      <div className="space-y-6">
+                        {resources.slice(0, 5).map(r => {
+                          const biz = businesses.find(b => b.id === r.businessId || b.ownerUid === r.businessId || b.id === r.id);
+                          return (
+                            <FeedItem 
+                              key={r.id} 
+                              title={r.title} 
+                              business={r.businessName} 
+                              businessId={biz?.id}
+                              description={r.description} 
+                              type={r.type} 
+                              isClaimed={r.claimedBy?.includes(user?.uid)}
+                              onClaim={() => toggleClaim(r.id, r.claimedBy?.includes(user?.uid))}
+                              isLoading={processingId === r.id}
+                              isOwner={r.ownerUid === user?.uid}
+                              phone={biz?.phone}
+                              quantity={r.quantity}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {helpOffers.length > 0 && (
+                    <div className="space-y-6">
+                      {helpOffers.slice(0, 5).map(h => {
+                        const offerProfile = allUsers.find(u => u.uid === h.userUid);
+                        return (
+                          <FeedItem 
+                            key={h.id} 
+                            title={`Community Offer: ${h.capacity}`} 
+                            business={h.userName} 
+                            description={h.description} 
+                            type="help" 
+                            contactPreference={h.contactPreference}
+                            natureIcon={h.natureIcon}
+                            streetName={h.streetName}
+                            isClaimed={h.claimedBy?.includes(user?.uid)}
+                            onClaim={() => toggleHelpClaim(h.id, h.claimedBy?.includes(user?.uid))}
+                            isLoading={processingId === h.id}
+                            email={offerProfile?.email}
+                            phone={offerProfile?.phone}
+                            isOwner={h.userUid === user?.uid}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {events.length > 0 && (
+                    <div id="feed-events" className="scroll-mt-32">
+                      <div className="flex items-center gap-3 mb-4 pt-10">
+                        <div className="h-px bg-sage/20 flex-1" />
+                        <span className="text-[10px] font-black text-sage uppercase tracking-[0.2em]">Upcoming Events</span>
+                        <div className="h-px bg-sage/20 flex-1" />
+                      </div>
+                      <div className="space-y-6">
+                        {events.slice(0, 5).map(e => {
+                          const creator = allUsers.find(u => u.uid === e.creatorUid);
+                          return (
+                            <FeedItem 
+                              key={e.id} 
+                              title={e.title} 
+                              business="Community Event" 
+                              description={e.description} 
+                              type="event" 
+                              email={e.email || creator?.email}
+                              phone={e.phone || creator?.phone}
+                              date={e.date}
+                              time={e.time}
+                              location={e.location}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   {assistanceRequests.slice(0, 5).map(req => {
                     const requester = allUsers.find(u => u.uid === req.userUid);
                     return (
@@ -548,18 +706,38 @@ export default function Dashboard() {
 
               {activeTab === "events" && (
                 <motion.div key="events" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
-                  <h2 className="text-3xl font-serif text-forest">Community Events</h2>
-                  <div className="grid gap-4">
-                    {events.map(e => (
-                      <EventCard 
-                        key={e.id} 
-                        event={e} 
-                        isOwner={e.creatorUid === user?.uid}
-                        onEdit={() => startEditEvent(e)}
-                        onDelete={() => deleteEvent(e.id)}
-                      />
-                    ))}
-                    {events.length === 0 && <p className="text-center py-10 text-sage font-bold uppercase tracking-widest">No upcoming events</p>}
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-3xl font-serif text-forest">Community Events</h2>
+                  </div>
+                  
+                  <div className="grid gap-6">
+                    {events.length > 0 ? (
+                      events.map(e => (
+                        <EventCard 
+                          key={e.id} 
+                          event={e} 
+                          isOwner={e.creatorUid === user?.uid}
+                          onEdit={() => startEditEvent(e)}
+                          onDelete={() => deleteEvent(e.id)}
+                        />
+                      ))
+                    ) : (
+                      <div className="text-center py-20 bg-paper/50 rounded-[40px] border-4 border-dashed border-sand/30 flex flex-col items-center gap-6">
+                        <div className="w-16 h-16 bg-sand/30 rounded-full flex items-center justify-center text-sage">
+                          <Calendar size={32} />
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-forest font-serif text-2xl">No gatherings planned yet</p>
+                          <p className="text-sage font-medium italic">Why not start one?</p>
+                        </div>
+                        <button 
+                          onClick={() => setIsHelpModalOpen(true)}
+                          className="px-8 py-4 bg-forest text-paper rounded-2xl font-bold text-xs uppercase tracking-widest shadow-xl hover:shadow-forest/20 transition-all flex items-center gap-2"
+                        >
+                          <Heart size={16} /> Offer Help
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               )}
@@ -592,6 +770,7 @@ export default function Dashboard() {
                   <div className="grid gap-4">
                     {resources.map(r => {
                       const biz = businesses.find(b => b.id === r.businessId || b.ownerUid === r.businessId || b.id === r.id);
+                      const ownerProfile = biz ? allUsers.find(u => u.uid === biz.ownerUid) : null;
                       return (
                         <ResourceCard 
                           key={r.id} 
@@ -602,6 +781,7 @@ export default function Dashboard() {
                           isClaimed={r.claimedBy?.includes(user?.uid)}
                           onClaim={() => toggleClaim(r.id, r.claimedBy?.includes(user?.uid))}
                           logo={biz?.logo}
+                          natureIcon={ownerProfile?.natureIcon}
                           claimCount={r.claimedBy?.length || 0}
                           quantity={r.quantity}
                           isLoading={processingId === r.id}
@@ -626,7 +806,7 @@ export default function Dashboard() {
                       className="w-full pl-12 pr-4 py-3 rounded-2xl border-2 border-sage bg-paper focus:outline-none focus:border-forest" 
                     />
                   </div>
-                  <div className="grid gap-4">
+                  <div className="flex flex-col gap-3 w-full">
                     {filteredBusinesses.map(b => (
                       <DirectoryItem 
                         key={b.id} 
@@ -635,9 +815,6 @@ export default function Dashboard() {
                         category={b.category} 
                         phone={b.phone} 
                         logo={b.logo} 
-                        photos={b.photos} 
-                        isFavorite={profile?.favorites?.includes(b.name)}
-                        onToggleFavorite={() => toggleFavorite(b.name)}
                       />
                     ))}
                   </div>
@@ -795,7 +972,7 @@ export default function Dashboard() {
 
         {/* Right Sidebar */}
         <aside className="lg:col-span-3 space-y-6">
-          <div className="bg-paper p-8 rounded-[32px] border-4 border-ink shadow-xl">
+          <div className="bg-paper p-8 rounded-[32px] border border-ink shadow-soft-glow">
             <h3 className="font-serif text-xl text-forest mb-6">Favorites</h3>
             <div className="space-y-4">
               {profile?.favorites?.length ? profile.favorites.map((f: string) => {
@@ -850,23 +1027,23 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="bg-forest p-8 rounded-[32px] text-paper shadow-xl">
+          <div className="bg-forest p-8 rounded-[32px] text-paper shadow-soft-glow border border-white/10">
             <h3 className="font-serif text-xl mb-4">Need Help?</h3>
             <p className="text-xs opacity-80 leading-relaxed mb-6">Are you an elderly resident or in a "wild crazy situation"? Our community is here for you.</p>
             <button 
               onClick={() => setIsRequestModalOpen(true)}
-              className="w-full py-3 bg-paper text-forest rounded-2xl font-bold uppercase text-[10px] tracking-widest hover:bg-sand transition-all"
+              className="w-full py-3 bg-paper text-forest rounded-2xl font-bold uppercase text-[10px] tracking-widest hover:bg-sand transition-all shadow-soft-glow"
             >
               Request Assistance
             </button>
           </div>
 
-          <div className="bg-[#8d967a] p-8 rounded-[32px] text-paper shadow-xl">
+          <div className="bg-[#8d967a] p-8 rounded-[32px] text-paper shadow-soft-glow border border-white/10">
             <h3 className="font-serif text-xl mb-4">Report an Issue</h3>
             <p className="text-xs opacity-80 leading-relaxed mb-6">Support our mission of safety and excellence. Report website bugs or questionable behavior.</p>
             <button 
               onClick={() => setIsIssueModalOpen(true)}
-              className="w-full py-3 bg-paper text-[#8d967a] rounded-2xl font-bold uppercase text-[10px] tracking-widest hover:bg-sand transition-all"
+              className="w-full py-3 bg-paper text-[#8d967a] rounded-2xl font-bold uppercase text-[10px] tracking-widest hover:bg-sand transition-all shadow-soft-glow"
             >
               Report Issue
             </button>
@@ -1049,6 +1226,46 @@ export default function Dashboard() {
       </AnimatePresence>
 
       <div className="fixed inset-0 pointer-events-none border-[20px] md:border-[30px] border-sand z-50 shadow-[inset_0_0_40px_rgba(0,0,0,0.05)]"></div>
+
+      {/* Floating Action Button (FAB) */}
+      <div className="fixed bottom-24 right-6 z-[200] flex flex-col items-end gap-3 pointer-events-none">
+        <AnimatePresence>
+          {isFabOpen && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.8, y: 20 }}
+              className="flex flex-col gap-3 pointer-events-auto"
+            >
+              <button 
+                onClick={() => { setIsFabOpen(false); setEditingEvent(null); setEventData({ title: "", description: "", date: "", time: "", location: "", email: "", phone: "" }); setIsEventModalOpen(true); }}
+                className="flex items-center gap-3 px-6 py-3 bg-white/70 backdrop-blur-md rounded-2xl border border-forest/10 shadow-soft-glow group"
+              >
+                <span className="text-[10px] font-black text-forest uppercase tracking-widest">Post Event</span>
+                <div className="p-2 bg-sand rounded-xl text-forest group-hover:bg-forest group-hover:text-paper transition-all">
+                  <Calendar size={18} />
+                </div>
+              </button>
+              <button 
+                onClick={() => { setIsFabOpen(false); setIsHelpModalOpen(true); }}
+                className="flex items-center gap-3 px-6 py-3 bg-white/70 backdrop-blur-md rounded-2xl border border-forest/10 shadow-soft-glow group"
+              >
+                <span className="text-[10px] font-black text-forest uppercase tracking-widest">Offer Help</span>
+                <div className="p-2 bg-sand rounded-xl text-forest group-hover:bg-forest group-hover:text-paper transition-all">
+                  <Heart size={18} />
+                </div>
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        
+        <button 
+          onClick={() => setIsFabOpen(!isFabOpen)}
+          className={`w-16 h-16 rounded-full bg-forest text-paper flex items-center justify-center shadow-xl hover:scale-105 transition-all pointer-events-auto ${isFabOpen ? 'rotate-45' : ''}`}
+        >
+          <Plus size={32} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -1057,7 +1274,7 @@ function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode, labe
   return (
     <button 
       onClick={onClick}
-      className={`w-full flex items-center gap-4 px-4 py-3 rounded-2xl font-bold text-[10px] uppercase tracking-widest transition-all ${active ? 'bg-forest text-paper shadow-lg' : 'text-forest hover:bg-sand'}`}
+      className={`w-full flex items-center gap-4 px-4 py-3 rounded-2xl font-bold text-[10px] uppercase tracking-widest transition-all ${active ? 'bg-forest text-paper shadow-soft-glow' : 'text-forest hover:bg-sand'}`}
     >
       {icon} {label}
     </button>
@@ -1067,9 +1284,9 @@ function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode, labe
 function ClaimedOfferCard({ title, neighborName, neighborStreet, neighborEmail, natureIcon }: { title: string, neighborName: string, neighborStreet: string, neighborEmail?: string, natureIcon?: string, key?: any }) {
   const Icon = natureIcon ? NATURE_ICONS[natureIcon] : TreePine;
   return (
-    <div className="bg-paper p-6 rounded-3xl border-2 border-forest/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-sm hover:border-forest/30 transition-all">
+    <div className="bg-paper p-6 rounded-3xl border border-forest/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-soft-glow hover:border-forest/30 transition-all">
       <div className="flex items-center gap-4">
-        <div className="p-3 bg-sand rounded-2xl text-forest">
+        <div className="p-3 bg-sand rounded-[30%_70%_70%_30%/50%_40%_60%_40%] text-forest border border-sage/10">
           <Icon size={24} />
         </div>
         <div>
@@ -1090,10 +1307,27 @@ function ClaimedOfferCard({ title, neighborName, neighborStreet, neighborEmail, 
   );
 }
 
-function FeedItem({ title, business, businessId, description, type, contactPreference, streetName, isAnonymous, natureIcon, isClaimed, onClaim, isLoading, isOwner, email, phone, quantity }: { title: string, business: string, businessId?: string, description: string, type: 'resource' | 'service' | 'event' | 'request', key?: any, contactPreference?: string, streetName?: string, isAnonymous?: boolean, natureIcon?: string, isClaimed?: boolean, onClaim?: () => void, isLoading?: boolean, isOwner?: boolean, email?: string, phone?: string, quantity?: number }) {
+function FeedItem({ title, business, businessId, description, type, contactPreference, streetName, isAnonymous, natureIcon, isClaimed, onClaim, isLoading, isOwner, email, phone, quantity, date, time, location }: { title: string, business: string, businessId?: string, description: string, type: 'resource' | 'service' | 'event' | 'request' | 'help', key?: any, contactPreference?: string, streetName?: string, isAnonymous?: boolean, natureIcon?: string, isClaimed?: boolean, onClaim?: () => void, isLoading?: boolean, isOwner?: boolean, email?: string, phone?: string, quantity?: number, date?: string, time?: string, location?: string }) {
+  const smsBody = encodeURIComponent(`Hi ${business}! I'm your neighbor from ALT Business Connections. I'm interested in: ${title}`);
+  
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return "";
+    try {
+      // Handle the yyyy-mm-dd input from HTML date picker
+      const [year, month, day] = dateStr.split('-');
+      if (year && month && day) {
+        return `${month}/${day}/${year}`;
+      }
+      return dateStr;
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
   const colors = {
-    resource: 'bg-sage text-paper shadow-sm border border-sage/20',
-    service: 'bg-forest text-paper',
+    resource: 'bg-[#6fb36f] text-paper shadow-sm border border-[#6fb36f]/20',
+    service: 'bg-[#6fb36f] text-paper shadow-sm border border-[#6fb36f]/20',
+    help: 'bg-[#92b492] text-paper shadow-sm border border-[#92b492]/20',
     event: 'bg-amber-600 text-paper',
     request: 'bg-sand text-forest border-2 border-forest'
   };
@@ -1101,7 +1335,7 @@ function FeedItem({ title, business, businessId, description, type, contactPrefe
   const Icon = natureIcon ? NATURE_ICONS[natureIcon] : null;
 
   return (
-    <div className={`p-8 rounded-[32px] border-2 shadow-sm relative overflow-hidden group hover:border-forest/20 transition-all ${type === 'resource' ? 'bg-sage/5 border-sage/20 shadow-sage/5' : 'bg-paper border-black/5'}`}>
+    <div className={`p-8 rounded-[32px] border shadow-soft-glow relative overflow-hidden group hover:border-forest/20 transition-all ${type === 'resource' ? 'bg-sage/5 border-sage/20 shadow-sage/5' : 'bg-paper border-black/5'}`}>
       {isAnonymous && type === 'request' && (
         <div className="absolute top-0 right-0 px-4 py-1 bg-amber-50 text-[8px] font-bold uppercase tracking-[0.2em] text-amber-700 rounded-bl-xl border-l border-b border-amber-100 flex items-center gap-1">
           <Shield size={8} /> Identity Protected
@@ -1111,10 +1345,10 @@ function FeedItem({ title, business, businessId, description, type, contactPrefe
       <div className="flex justify-between items-start mb-4">
         <div className="flex flex-wrap gap-2 items-center">
           <span className={`px-3 py-1 rounded-full text-[8px] font-bold uppercase tracking-widest flex items-center gap-1.5 ${colors[type]}`}>
-            {type === 'resource' && <Heart size={8} fill="currentColor" />}
-            {type === 'resource' ? 'Official Community Freebie' : type}
+            {(type === 'resource' || type === 'service' || type === 'help') && <Heart size={8} fill="currentColor" />}
+            {type === 'help' ? 'HELP OFFERS' : ((type === 'resource' || type === 'service') ? 'FREEBIE' : type)}
           </span>
-          {type === 'resource' && (
+          {(type === 'resource' || type === 'service') && (
             <span className="bg-amber-100 text-amber-800 px-2 py-1 rounded-full text-[7px] font-black uppercase tracking-widest border border-amber-200/50">
               Gift from {business}
             </span>
@@ -1133,15 +1367,30 @@ function FeedItem({ title, business, businessId, description, type, contactPrefe
       ) : (
         <>
           <h4 className="font-serif text-2xl text-forest mb-1">{title}</h4>
-          <div className="flex items-center gap-2 mb-4">
-            {Icon && <div className="p-1 bg-sand rounded text-forest"><Icon size={12} /></div>}
-            {businessId ? (
-              <Link to={`/business/${businessId}`} className="text-xs font-bold text-sage uppercase tracking-wider hover:text-forest transition-all underline decoration-sage/30">{business}</Link>
-            ) : (
-              <div className="text-xs font-bold text-sage uppercase tracking-wider">{business}</div>
+          <div className="flex flex-col gap-2 mb-4">
+            <div className="flex items-center gap-2">
+              {type === 'event' ? (
+                <div className="flex items-center gap-2 text-[10px] font-bold text-amber-600 uppercase tracking-widest bg-amber-50 px-2 py-1 rounded-lg">
+                  <Calendar size={12} /> {formatDate(date)} {time && `@ ${time}`}
+                </div>
+              ) : (
+                <>
+                  {Icon && <div className="p-1 bg-sand rounded text-forest"><Icon size={12} /></div>}
+                  {businessId ? (
+                    <Link to={`/business/${businessId}`} className="text-xs font-bold text-sage uppercase tracking-wider hover:text-forest transition-all underline decoration-sage/30">{business}</Link>
+                  ) : (
+                    <div className="text-xs font-bold text-sage uppercase tracking-wider">{business}</div>
+                  )}
+                </>
+              )}
+              <div className="w-1 h-1 bg-sand rounded-full"></div>
+              <div className="text-sage/40 hover:text-sage transition-colors" title="Vetted Resident"><HouseHeart size={12} /></div>
+            </div>
+            {type === 'event' && location && (
+              <div className="flex items-center gap-1.5 text-[10px] font-bold text-sage uppercase tracking-widest">
+                <MapPin size={12} className="text-forest" /> {location}
+              </div>
             )}
-            <div className="w-1 h-1 bg-sand rounded-full"></div>
-            <div className="text-[10px] text-sage/60 font-medium tracking-tight whitespace-nowrap overflow-hidden text-ellipsis max-w-[100px] sm:max-w-none">Vetted Resident</div>
           </div>
           <p className="text-ink/80 leading-relaxed mb-6 font-medium">{description}</p>
         </>
@@ -1156,7 +1405,7 @@ function FeedItem({ title, business, businessId, description, type, contactPrefe
             <div className="text-xs font-bold text-sage uppercase tracking-wider">{business}</div>
           )}
           <div className="w-1 h-1 bg-sand rounded-full"></div>
-          <div className="text-[10px] text-sage/60 font-medium tracking-tight whitespace-nowrap overflow-hidden text-ellipsis max-w-[100px] sm:max-w-none">Partner Provider</div>
+          <div className="text-sage/40 hover:text-sage transition-colors" title="Partner Provider"><BadgeCheck size={12} /></div>
         </div>
       )}
       
@@ -1170,7 +1419,7 @@ function FeedItem({ title, business, businessId, description, type, contactPrefe
       )}
 
       <div className="flex items-center justify-between mt-4 pt-4 border-t border-sand">
-        {(type === 'resource' || type === 'service') ? (
+        {(type === 'resource' || type === 'service' || type === 'help') ? (
           <div className="flex items-center gap-6">
             {quantity !== undefined && type === 'resource' && (
               <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-sage border-r border-sand pr-4">
@@ -1186,20 +1435,20 @@ function FeedItem({ title, business, businessId, description, type, contactPrefe
                 onClick={onClaim}
                 className={`text-[10px] font-bold uppercase tracking-[0.2em] transition-all flex items-center gap-2 ${isClaimed ? 'text-forest' : 'text-sage hover:text-forest'}`}
               >
-                {isLoading ? <Loader2 className="animate-spin" size={12} /> : (isClaimed ? <><CheckCircle2 size={12} /> Claimed</> : <><Plus size={12} /> {type === 'resource' ? 'Claim Freebie' : 'Interested'}</>)}
+                {isLoading ? <Loader2 className="animate-spin" size={12} /> : (isClaimed ? <><CheckCircle2 size={12} /> Claimed</> : <><Plus size={12} /> {type === 'help' ? 'Interested' : (type === 'resource' || type === 'service' ? 'Claim Freebie' : 'Interested')}</>)}
               </button>
             )}
           </div>
         ) : (
           <div className="flex gap-4">
             {phone && (
-              <a href={`tel:${phone}`} className="text-[10px] font-bold uppercase tracking-[0.2em] text-forest hover:text-sage transition-all flex items-center gap-2">
-                Call <Phone size={12} />
+              <a href={`sms:${phone}?body=${smsBody}`} title="Text Poster" className="text-forest hover:text-sage transition-all flex items-center">
+                <MessageSquareHeart size={16} />
               </a>
             )}
             {email && (
-              <a href={`mailto:${email}`} className="text-[10px] font-bold uppercase tracking-[0.2em] text-forest hover:text-sage transition-all flex items-center gap-2">
-                Email <Mail size={12} />
+              <a href={`mailto:${email}`} title="Email Poster" className="text-forest hover:text-sage transition-all flex items-center">
+                <Mail size={16} />
               </a>
             )}
             {!phone && !email && (
@@ -1209,52 +1458,65 @@ function FeedItem({ title, business, businessId, description, type, contactPrefe
             )}
           </div>
         )}
-        <span className="text-[8px] text-sage font-bold uppercase tracking-widest">Neighbor Connection</span>
+        <div className="text-sage/40" title="Neighbor Connection"><HeartHandshake size={12} /></div>
       </div>
     </div>
   );
 }
 
-function ResourceCard({ title, business, businessId, description, isClaimed, onClaim, logo, claimCount = 0, quantity = 1, isLoading, isOwner }: { title: string, business: string, businessId?: string, description: string, isClaimed: boolean, onClaim: () => void, key?: any, logo?: string, claimCount?: number, quantity?: number, isLoading?: boolean, isOwner?: boolean }) {
+function ResourceCard({ title, business, businessId, description, isClaimed, onClaim, logo, natureIcon, claimCount = 0, quantity = 1, isLoading, isOwner }: { title: string, business: string, businessId?: string, description: string, isClaimed: boolean, onClaim: () => void, key?: any, logo?: string, natureIcon?: string, claimCount?: number, quantity?: number, isLoading?: boolean, isOwner?: boolean }) {
   const isAvailable = quantity > claimCount;
+  const Icon = natureIcon ? NATURE_ICONS[natureIcon] : Building2;
   
   return (
-    <div className="bg-paper p-6 rounded-3xl border-2 border-sage/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-      <div className="flex-1 flex gap-4 items-start">
+    <div className="bg-paper p-6 rounded-[32px] border-2 border-sage/20 flex flex-col md:flex-row justify-between items-center md:items-center gap-6 hover:border-forest/20 transition-all shadow-soft-glow max-w-[calc(100vw-2rem)] mx-auto md:max-w-none">
+      <div className="flex-1 flex flex-col md:flex-row gap-5 items-center md:items-start w-full text-center md:text-left">
         {businessId ? (
-          <Link to={`/business/${businessId}`}>
-            {logo && (
-              <img src={logo} alt={business} className="w-12 h-12 rounded-xl object-cover border border-sage/20 flex-shrink-0 hover:border-forest/50 transition-all" referrerPolicy="no-referrer" />
-            )}
+          <Link to={`/business/${businessId}`} className="p-4 bg-sand rounded-[30%_70%_70%_30%/50%_40%_60%_40%] text-forest hover:bg-forest hover:text-paper transition-all flex-shrink-0 shadow-soft-glow group mx-auto md:mx-0 border border-sage/10">
+            <Icon size={28} className="group-hover:scale-110 transition-transform" />
           </Link>
-        ) : logo && (
-          <img src={logo} alt={business} className="w-12 h-12 rounded-xl object-cover border border-sage/20 flex-shrink-0" referrerPolicy="no-referrer" />
-        )}
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <h4 className="font-serif text-xl text-forest">{title}</h4>
-            <span className={`px-2 py-0.5 text-[8px] font-bold rounded-full uppercase tracking-widest ${isAvailable ? 'bg-forest/10 text-forest' : (isClaimed ? 'bg-forest/10 text-forest' : 'bg-red-50 text-red-500')}`}>
-              {isClaimed ? 'You claimed this' : isAvailable ? `${quantity - claimCount} remaining` : 'Fully Claimed'}
-            </span>
+        ) : (
+          <div className="p-4 bg-sand rounded-[30%_70%_70%_30%/50%_40%_60%_40%] text-forest flex-shrink-0 mx-auto md:mx-0 border border-sage/10">
+            <Icon size={28} />
           </div>
+        )}
+        <div className="min-w-0 w-full flex-1">
+          <div className="flex flex-col mb-1 items-center md:items-start">
+            <h4 className="font-serif text-xl text-forest leading-tight mb-1">{title}</h4>
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 mb-2">
+              <span className={`px-2 py-0.5 text-[8px] font-bold rounded-full uppercase tracking-widest ${isAvailable ? 'bg-forest/10 text-forest border border-forest/20' : (isClaimed ? 'bg-forest/10 text-forest' : 'bg-red-50 text-red-500 border border-red-200')}`}>
+                {isClaimed ? 'You claimed this' : isAvailable ? `${quantity - claimCount} remaining` : 'Fully Claimed'}
+              </span>
+              {businessId ? (
+                <Link to={`/business/${businessId}`} className="text-[10px] font-black text-sage uppercase tracking-widest hover:text-forest transition-all underline decoration-sage/30 truncate max-w-[150px]">{business}</Link>
+              ) : (
+                <p className="text-[10px] font-black text-sage uppercase tracking-widest truncate max-w-[150px]">{business}</p>
+              )}
+            </div>
+          </div>
+          
           {businessId ? (
-            <Link to={`/business/${businessId}`} className="text-xs font-bold text-sage uppercase tracking-widest mb-2 hover:text-forest transition-all underline decoration-sage/30">{business}</Link>
+            <Link to={`/business/${businessId}`} className="group block w-full">
+              <p className="text-sm text-ink/70 font-medium line-clamp-2 md:line-clamp-1 group-hover:text-forest transition-colors break-words px-2 md:px-0">
+                {description}
+                <span className="ml-2 text-sage group-hover:underline text-[10px] font-bold inline-block">Read more →</span>
+              </p>
+            </Link>
           ) : (
-            <p className="text-xs font-bold text-sage uppercase tracking-widest mb-2">{business}</p>
+            <p className="text-sm text-ink/70 font-medium line-clamp-2 md:line-clamp-none break-words px-2 md:px-0">{description}</p>
           )}
-          <p className="text-sm text-ink/70 font-medium">{description}</p>
         </div>
       </div>
-      <div className="flex items-center gap-3 w-full md:w-auto">
+      <div className="flex items-center gap-3 w-full md:w-auto mt-2 md:mt-0">
         {isOwner ? (
-          <div className="px-8 py-3 bg-paper border-2 border-amber-200 text-amber-600 rounded-2xl font-bold text-[10px] uppercase tracking-widest italic">
+          <div className="w-full text-center md:w-auto px-8 py-4 bg-paper border-2 border-amber-200 text-amber-600 rounded-2xl font-bold text-[10px] uppercase tracking-widest italic shadow-sm">
             Your Freebie
           </div>
         ) : (
           <button 
             disabled={isLoading || (!isAvailable && !isClaimed)}
             onClick={onClaim}
-            className={`w-full md:w-auto flex items-center justify-center gap-2 px-8 py-3 rounded-2xl font-bold text-[10px] uppercase tracking-widest transition-all ${isClaimed ? 'bg-forest text-paper shadow-lg shadow-forest/20' : isAvailable ? 'bg-sand text-forest hover:bg-forest hover:text-paper shadow-md' : 'bg-sage/20 text-sage cursor-not-allowed'}`}
+            className={`w-full md:w-auto flex items-center justify-center gap-2 px-10 py-4 rounded-2xl font-bold text-[10px] uppercase tracking-widest transition-all ${isClaimed ? 'bg-forest text-paper shadow-lg shadow-forest/20' : isAvailable ? 'bg-sand text-forest hover:bg-forest hover:text-paper shadow-md' : 'bg-sage/20 text-sage cursor-not-allowed'}`}
           >
             {isLoading ? <Loader2 className="animate-spin" size={14} /> : (isClaimed ? <><CheckCircle2 size={14} /> Claimed</> : isAvailable ? <><Plus size={14} /> Claim</> : 'Fully Claimed')}
           </button>
@@ -1264,75 +1526,43 @@ function ResourceCard({ title, business, businessId, description, isClaimed, onC
   );
 }
 
-function DirectoryItem({ id, name, category, phone, logo, photos, isFavorite, onToggleFavorite }: { id: string, name: string, category: string, phone: string, key?: any, logo?: string, photos?: string[], isFavorite?: boolean, onToggleFavorite?: () => void }) {
+function DirectoryItem({ id, name, category, phone, logo }: { id: string, name: string, category: string, phone: string, key?: any, logo?: string }) {
   const smsBody = encodeURIComponent(`Hi ${name}! I'm your neighbor from ALT Business Connections. I'm interested in your services...`);
-  const [showPhotos, setShowPhotos] = React.useState(false);
   
   return (
-    <div className="bg-paper p-6 rounded-3xl border-2 border-black/5 flex flex-col gap-6 group hover:border-forest/20 transition-all shadow-sm hover:shadow-md">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <Link to={`/business/${id}`} className="flex items-center gap-4 flex-1">
+    <div className="bg-white/50 p-2 rounded-xl border border-sage/10 group hover:border-forest/20 transition-all shadow-soft-glow w-full overflow-hidden flex flex-col gap-2">
+      <div className="flex items-center gap-3 w-full">
+        {/* Logo Anchor */}
+        <Link to={`/business/${id}`} className="flex-shrink-0">
           {logo ? (
-            <img src={logo} alt={name} className="w-16 h-16 rounded-2xl object-cover border-2 border-sand shadow-sm group-hover:border-forest/30 transition-all" referrerPolicy="no-referrer" />
+            <img src={logo} alt={name} className="w-10 h-10 rounded-[30%_70%_70%_30%/50%_40%_60%_40%] object-cover border border-sage/20" referrerPolicy="no-referrer" />
           ) : (
-            <div className="w-16 h-16 rounded-2xl bg-sand flex items-center justify-center text-forest group-hover:bg-forest/5 transition-all">
-              <Building2 size={32} />
+            <div className="w-10 h-10 rounded-[30%_70%_70%_30%/50%_40%_60%_40%] bg-sand/30 flex items-center justify-center text-forest border border-sage/20">
+              <Building2 size={18} />
             </div>
           )}
-          <div>
-            <h4 className="font-serif text-xl text-forest group-hover:text-forest transition-all flex items-center gap-2">
-              {name}
-              <ArrowRight size={14} className="opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all" />
-            </h4>
-            <p className="text-[10px] font-bold text-sage uppercase tracking-widest">{category}</p>
-          </div>
         </Link>
-        <div className="flex gap-2 w-full md:w-auto">
-          {photos && photos.length > 0 && (
-            <button 
-              onClick={() => setShowPhotos(!showPhotos)}
-              className="p-3 bg-sand text-forest rounded-xl hover:bg-forest hover:text-paper transition-all border-2 border-transparent"
-              title="View Photos"
-            >
-              <Camera size={18} />
-            </button>
-          )}
-          {onToggleFavorite && (
-            <button 
-              onClick={onToggleFavorite}
-              className={`p-3 rounded-xl border-2 transition-all ${isFavorite ? 'bg-amber-400 border-amber-400 text-paper' : 'bg-paper border-sand text-forest hover:bg-sand'}`}
-              title={isFavorite ? "Remove from Favorites" : "Add to Favorites"}
-            >
-              <Star size={18} fill={isFavorite ? "currentColor" : "none"} />
-            </button>
-          )}
-          <a href={`tel:${phone}`} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-sand text-forest rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:bg-forest hover:text-paper transition-all shadow-sm">
-            <Phone size={16} /> Call
+
+        {/* Flexible Center */}
+        <div className="flex-1 min-w-0">
+          <Link to={`/business/${id}`} className="block min-w-0">
+            <h4 className="font-serif text-sm font-bold text-forest truncate block leading-tight">
+              {name}
+            </h4>
+            <CategoryTag label={category} small />
+          </Link>
+        </div>
+
+        {/* Action Group */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <a href={`tel:${phone}`} title="Call" className="p-1.5 bg-forest text-paper rounded-lg hover:opacity-90 transition-all shadow-soft-glow">
+            <Phone size={14} />
           </a>
-          <a href={`sms:${phone}?body=${smsBody}`} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-paper border-2 border-sand text-forest rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:bg-sand transition-all">
-            <MessageSquare size={16} /> Text
+          <a href={`sms:${phone}?body=${smsBody}`} title="Text" className="p-1.5 bg-paper border border-forest/20 text-forest rounded-lg hover:bg-sand transition-all">
+            <MessageSquare size={14} />
           </a>
         </div>
       </div>
-
-      <AnimatePresence>
-        {showPhotos && photos && photos.length > 0 && (
-          <motion.div 
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
-          >
-            <div className="grid grid-cols-3 gap-4 pt-4 border-t border-sand">
-              {photos.map((p, i) => (
-                <div key={i} className="aspect-video rounded-xl overflow-hidden border-2 border-sand">
-                  <img src={p} alt={`${name} showcase ${i}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
@@ -1377,7 +1607,7 @@ function Modal({ title, children, onClose }: { title: string, children: React.Re
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-ink/40 backdrop-blur-sm" onClick={onClose} />
-      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-paper w-full max-w-md rounded-[40px] border-[12px] border-ink p-10 relative z-10 max-h-[90vh] overflow-y-auto">
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-paper w-full max-w-md rounded-[40px] border border-ink p-10 relative z-10 max-h-[90vh] overflow-y-auto shadow-soft-glow">
         <button onClick={onClose} className="absolute top-6 right-6 text-sage hover:text-forest"><X size={24} /></button>
         <h2 className="text-3xl font-serif text-forest mb-6">{title}</h2>
         {children}
@@ -1441,37 +1671,116 @@ function SubmitButton({ loading, children }: { loading: boolean, children: React
   );
 }
 
-function EventCard({ event, isOwner, onEdit, onDelete }: { event: any, key?: any, isOwner?: boolean, onEdit?: () => void, onDelete?: () => void }) {
+function EventCard({ event, isOwner, onEdit, onDelete }: { event: any, isOwner?: boolean, onEdit?: () => void, onDelete?: () => void, key?: any }) {
+  const [isExpanded, setIsExpanded] = React.useState(false);
+  const parseDate = (dateStr: string) => {
+    if (!dateStr) return { month: '??', day: '??' };
+    try {
+      const parts = dateStr.split('-');
+      if (parts.length !== 3) return { month: '??', day: '??' };
+      const date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+      const month = date.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+      const day = date.getDate().toString();
+      return { month, day };
+    } catch (e) {
+      return { month: '??', day: '??' };
+    }
+  };
+
+  const { month, day } = parseDate(event.date);
+
   return (
-    <div className="bg-paper p-6 rounded-3xl border-2 border-sage/20 space-y-4">
-      <div className="flex justify-between items-start">
-        <h4 className="font-serif text-xl text-forest">{event.title}</h4>
-        <div className="flex items-center gap-2 text-sage font-bold text-[10px] uppercase tracking-widest">
-          <Calendar size={14} /> {event.date}
-        </div>
+    <div 
+      onClick={() => setIsExpanded(!isExpanded)}
+      className={`bg-paper p-4 md:p-6 rounded-[32px] border-2 flex flex-row gap-4 md:gap-6 shadow-soft-glow transition-all group overflow-hidden cursor-pointer relative ${isExpanded ? 'border-forest/40 ring-2 ring-forest/5 shadow-md' : 'border-sage/20 hover:border-forest/30'}`}
+    >
+      {/* Sidebar Calendar Badge */}
+      <div className="flex-shrink-0 flex flex-col items-center justify-center w-14 md:w-20 h-20 md:h-24 bg-sand/30 rounded-2xl border-2 border-forest/10 overflow-hidden text-center shadow-inner group-hover:border-forest/30 transition-all self-start mt-1">
+        <div className="bg-forest w-full py-0.5 md:py-1 text-[8px] md:text-[10px] font-black text-paper uppercase tracking-widest">{month}</div>
+        <div className="flex-1 flex items-center justify-center text-xl md:text-3xl font-serif text-forest lining-nums">{day}</div>
       </div>
-      <p className="text-sm text-ink/70 font-medium">{event.description}</p>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4 text-[10px] font-bold uppercase tracking-widest text-sage">
-          <div className="flex items-center gap-1"><MapPin size={14} /> {event.location}</div>
-          <div className="flex items-center gap-1"><Calendar size={14} /> {event.time}</div>
-        </div>
-        {isOwner && (
-          <div className="flex gap-2">
-            <button 
-              onClick={onEdit}
-              className="px-3 py-1 bg-sand text-forest rounded-lg font-bold text-[8px] uppercase tracking-widest hover:bg-forest hover:text-paper transition-all"
-            >
-              Edit
-            </button>
-            <button 
-              onClick={onDelete}
-              className="px-3 py-1 bg-red-50 text-red-500 rounded-lg font-bold text-[8px] uppercase tracking-widest hover:bg-red-500 hover:text-paper transition-all"
-            >
-              Remove
-            </button>
+
+      <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
+        <div className="space-y-3">
+          <div className="flex justify-between items-start gap-4">
+            <div className="space-y-1 min-w-0 flex-1">
+              <h4 className={`font-serif text-xl md:text-2xl text-forest leading-tight group-hover:text-forest/80 transition-colors ${isExpanded ? 'whitespace-normal' : 'truncate'}`}>
+                {event.title}
+              </h4>
+              
+              <div className="flex flex-col gap-1 md:gap-1.5 pt-1">
+                {event.location && (
+                  <div className="inline-flex items-center gap-1.5 text-[9px] md:text-[10px] font-bold text-sage uppercase tracking-widest">
+                    <MapPin size={12} className="text-forest flex-shrink-0" /> 
+                    <span className="truncate">{event.location}</span>
+                  </div>
+                )}
+                <div className="inline-flex items-center gap-1.5 text-[9px] md:text-[10px] font-bold text-sage uppercase tracking-widest">
+                  <Clock size={12} className="text-forest flex-shrink-0" /> 
+                  <span>{event.time}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="hidden sm:flex items-center gap-2 text-sage/40 flex-shrink-0">
+              <Sparkles size={16} />
+            </div>
           </div>
-        )}
+
+          <motion.div 
+            initial={false}
+            animate={{ height: "auto" }}
+            className="overflow-hidden"
+          >
+            <p className={`text-sm text-ink/70 font-medium leading-relaxed whitespace-normal break-words transition-all duration-300 ${!isExpanded ? 'line-clamp-2 md:line-clamp-2' : ''}`}>
+              {event.description}
+            </p>
+          </motion.div>
+        </div>
+        
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-forest/5 mt-4">
+          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            {!isOwner && event.email && (
+              <a 
+                href={`mailto:${event.email}?subject=Inquiry about neighborhood event: ${event.title}`}
+                className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl font-bold text-[9px] md:text-[10px] uppercase tracking-widest transition-all shadow-sm ${isExpanded ? 'bg-forest text-paper ring-4 ring-forest/10 scale-105' : 'bg-forest/10 text-forest hover:bg-forest hover:text-paper'}`}
+              >
+                <MessageCircle size={14} /> Message Organizer
+              </a>
+            )}
+            
+            {isOwner && (
+              <div className="flex gap-2">
+                <button 
+                  onClick={onEdit}
+                  className="px-3 md:px-4 py-2 bg-sand text-forest rounded-xl font-bold text-[9px] md:text-[10px] uppercase tracking-widest hover:bg-forest hover:text-paper transition-all shadow-sm"
+                >
+                  Edit
+                </button>
+                <button 
+                  onClick={onDelete}
+                  className="px-3 md:px-4 py-2 bg-red-50 text-red-500 rounded-xl font-bold text-[9px] md:text-[10px] uppercase tracking-widest hover:bg-red-500 hover:text-paper transition-all shadow-sm"
+                >
+                  Remove
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="hidden xs:block text-[8px] md:text-[10px] font-bold uppercase tracking-widest text-sage/70 italic">
+            {isExpanded ? 'Full Details' : 'Tap to Expand'}
+          </div>
+        </div>
+
+        {/* Visual Cue */}
+        <div className="flex justify-center mt-2 md:hidden">
+          <motion.div
+            animate={{ rotate: isExpanded ? 180 : 0 }}
+            className="text-sage/40"
+          >
+            <ChevronDown size={16} />
+          </motion.div>
+        </div>
       </div>
     </div>
   );
@@ -1479,7 +1788,7 @@ function EventCard({ event, isOwner, onEdit, onDelete }: { event: any, key?: any
 
 function HelpOfferCard({ offer, isClaimed, onClaim, isLoading, isOwner, onEdit, onDelete }: { offer: any, isClaimed?: boolean, onClaim?: () => void, isLoading?: boolean, key?: any, isOwner?: boolean, onEdit?: () => void, onDelete?: () => void }) {
   return (
-    <div className="bg-paper p-6 rounded-3xl border-2 border-forest/20 space-y-4 shadow-sm hover:shadow-md transition-all">
+    <div className="bg-paper p-6 rounded-3xl border border-forest/20 space-y-4 shadow-soft-glow hover:shadow-md transition-all">
       <div className="flex justify-between items-start">
         <div className="flex items-center gap-2">
           <h4 className="font-serif text-xl text-forest">{offer.capacity}</h4>
