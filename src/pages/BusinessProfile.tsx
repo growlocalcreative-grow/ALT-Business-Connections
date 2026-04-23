@@ -217,7 +217,7 @@ export default function BusinessProfile() {
                 
                 {business.services && business.services.length > 0 && (
                   <div className="mt-8 pt-8 border-t border-forest/5">
-                    <h3 className="text-[10px] font-bold text-sage uppercase tracking-widest mb-4">Core Services</h3>
+                    <h3 className="text-[10px] font-semibold text-sage uppercase tracking-widest mb-4 shadow-text-pop">Core Services</h3>
                     <div className="flex flex-wrap gap-2">
                       {business.services.map((s: string, i: number) => (
                         <ServiceTag key={i} label={s} />
@@ -261,7 +261,7 @@ export default function BusinessProfile() {
                         <div className="flex-1">
                           <h4 className="font-serif text-xl text-forest mb-2">{e.title}</h4>
                           <p className="text-sm text-ink/70 font-medium line-clamp-2">{e.description}</p>
-                          <div className="flex flex-wrap gap-4 mt-4 text-[10px] font-bold text-sage uppercase tracking-widest">
+                          <div className="flex flex-wrap gap-4 mt-4 text-[10px] font-semibold text-sage uppercase tracking-widest shadow-text-pop">
                             <span className="flex items-center gap-1"><MapPin size={12} /> {e.location}</span>
                             <span className="flex items-center gap-1"><Clock size={12} /> {e.date} • {e.time}</span>
                           </div>

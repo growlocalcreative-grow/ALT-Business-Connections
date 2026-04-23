@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  --color-sage: #8d967a; /* Updated to your specific Sage */
+  --color-sage: #2D3426; /* Darkened to Forest Ink for maximum legibility */
   --color-sand: #E6D5B8;
   --color-forest: #2D4030;
   --color-paper: #FDFCF9;
@@ -11,6 +11,7 @@
   --font-serif: "Georgia", serif;
   
   --shadow-soft-glow: 0 8px 30px rgb(61 67 55 / 8%);
+  --shadow-text-pop: 0 1px 1px rgba(255, 255, 255, 0.4);
 }
 
 @layer base {
@@ -26,6 +27,9 @@
 }
 
 @layer utilities {
+  .shadow-text-pop {
+    text-shadow: 0 1px 1px rgba(255, 255, 255, 0.4);
+  }
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }

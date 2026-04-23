@@ -12,7 +12,7 @@ import {
   Building2, Users, Info, Heart, Star, Phone, Mail, Camera, Globe,
   TreePine, Leaf, Flower2, Bird, Mountain, Waves, 
   LayoutDashboard, Shield, ArrowRight, X, Loader2, CheckCircle2, XCircle, AlertTriangle,
-  BadgeCheck, HeartHandshake, HouseHeart, MessageSquareHeart, Sparkles, Clock, MessageCircle, ChevronDown,
+  BadgeCheck, HeartHandshake, HouseHeart, MessageSquareHeart, Sparkles, Clock, MessageCircle, ChevronDown, ChevronUp, Coffee,
   Zap, LifeBuoy, Palette, Utensils, Hammer, Briefcase, GraduationCap
 } from "lucide-react";
 
@@ -43,6 +43,7 @@ function CategoryTag({ label, small = false }: { label: string, small?: boolean 
     </span>
   );
 }
+
 import GlobalNav from "../components/GlobalNav";
 import { auth, db } from "../lib/firebase";
 import { signOut } from "firebase/auth";
@@ -85,6 +86,7 @@ export default function Dashboard() {
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
+  const [isDeedsModalOpen, setIsDeedsModalOpen] = useState(false);
   const [editingResource, setEditingResource] = useState<any | null>(null);
   const [editingHelpOffer, setEditingHelpOffer] = useState<any | null>(null);
   const [editingEvent, setEditingEvent] = useState<any | null>(null);
@@ -100,6 +102,62 @@ export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [isFabOpen, setIsFabOpen] = useState(false);
+  const [eventViewMode, setEventViewMode] = useState<"list" | "calendar">("list");
+  const [calendarSelectedDate, setCalendarSelectedDate] = useState<string | null>(null);
+  const [isConnectionsExpanded, setIsConnectionsExpanded] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [isMobileConnectionsOpen, setIsMobileConnectionsOpen] = useState(false);
+  const [claimsModalData, setClaimsModalData] = useState<{ title: string, claimants: any[] } | null>(null);
+
+  const myClaims = [
+    ...resources.filter(r => r.claimedBy?.includes(user?.uid)).map(r => ({ ...r, category: 'Freebie', natureIcon: r.natureIcon || 'Sparkles' })),
+    ...helpOffers.filter(o => o.claimedBy?.includes(user?.uid)).map(o => ({ ...o, category: 'Help Offer', title: o.capacity, businessName: o.userName, natureIcon: 'Heart' })),
+    ...assistanceRequests.filter(req => req.connectedHelperUid === user?.uid && req.status !== 'resolved').map(req => {
+      const reqProfile = allUsers.find(u => u.uid === req.userUid);
+      return {
+        ...req,
+        category: 'Help Request',
+        title: req.title,
+        businessName: reqProfile?.displayName || req.userName,
+        isAnonymous: req.isAnonymous,
+        realName: reqProfile?.displayName,
+        realPhone: reqProfile?.phone,
+        realEmail: reqProfile?.email,
+        natureIcon: req.natureIcon || 'Shield'
+      };
+    })
+  ].sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+  const myActiveRequests = assistanceRequests
+    .filter(req => req.userUid === user?.uid && req.connectedHelperUid && req.status !== 'resolved')
+    .map(req => {
+      const helperProfile = allUsers.find(u => u.uid === req.connectedHelperUid);
+      return {
+        ...req,
+        category: 'Getting Help',
+        title: req.title,
+        helperName: helperProfile?.displayName || "A Neighbor",
+        helperPhone: helperProfile?.phone,
+        helperEmail: helperProfile?.email,
+        natureIcon: helperProfile?.natureIcon || 'Sparkles',
+        isNew: req.ownerViewed === false
+      };
+    })
+    .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+  const viewHelpOfferClaims = (offer: any) => {
+    const claimants = (offer.claimedBy || []).map((uid: string) => 
+      allUsers.find(u => u.uid === uid)
+    ).filter(Boolean);
+    setClaimsModalData({ title: offer.capacity || offer.title, claimants });
+  };
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   const scrollToSection = (tabId: any, sectionId?: string) => {
     setActiveTab(tabId);
@@ -255,6 +313,43 @@ export default function Dashboard() {
 
   const isMasterAdmin = profile?.role === "master-admin";
 
+  const resolveRequest = async (requestId: string) => {
+    setProcessingId(requestId);
+    try {
+      await updateDoc(doc(db, "assistanceRequests", requestId), {
+        status: "resolved",
+        updatedAt: new Date().toISOString()
+      });
+      setToast("Request resolved! Thank you for the community love.");
+    } catch (error) {
+      console.error("Resolve failed:", error);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const markAllDeedsAsViewed = async () => {
+    const unviewed = myActiveRequests.filter(req => req.ownerViewed === false);
+    if (unviewed.length === 0) return;
+    
+    try {
+      for (const req of unviewed) {
+        await updateDoc(doc(db, "assistanceRequests", req.id), {
+          ownerViewed: true
+        });
+      }
+    } catch (error) {
+      console.error("Mark viewed failed:", error);
+    }
+  };
+
+  const handleDeedToggle = () => {
+    if (!isDeedsModalOpen) {
+      markAllDeedsAsViewed();
+    }
+    setIsDeedsModalOpen(!isDeedsModalOpen);
+  };
+
   const toggleClaim = async (resourceId: string, isClaimed: boolean) => {
     if (!user) return;
     
@@ -268,9 +363,16 @@ export default function Dashboard() {
     setProcessingId(resourceId);
     try {
       const ref = doc(db, "resources", resourceId);
-      await updateDoc(ref, {
-        claimedBy: isClaimed ? arrayRemove(user.uid) : arrayUnion(user.uid)
-      });
+      if (isClaimed) {
+        await updateDoc(ref, {
+          claimedBy: arrayRemove(user.uid)
+        });
+      } else {
+        await updateDoc(ref, {
+          claimedBy: arrayUnion(user.uid)
+        });
+        setToast("Success! Neighborly vibes sent.");
+      }
     } catch (error) {
       console.error("Claim toggle failed:", error);
     } finally {
@@ -283,11 +385,42 @@ export default function Dashboard() {
     setProcessingId(offerId);
     try {
       const ref = doc(db, "helpOffers", offerId);
-      await updateDoc(ref, {
-        claimedBy: isClaimed ? arrayRemove(user.uid) : arrayUnion(user.uid)
-      });
+      if (isClaimed) {
+        await updateDoc(ref, {
+          claimedBy: arrayRemove(user.uid)
+        });
+      } else {
+        await updateDoc(ref, {
+          claimedBy: arrayUnion(user.uid)
+        });
+        setToast("Success! Neighborly vibes sent.");
+      }
     } catch (error) {
       console.error("Help claim toggle failed:", error);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const toggleRequestConnection = async (requestId: string, isConnected: boolean) => {
+    if (!user) return;
+    setProcessingId(requestId);
+    try {
+      const ref = doc(db, "assistanceRequests", requestId);
+      if (isConnected) {
+        await updateDoc(ref, {
+          connectedHelperUid: null,
+          ownerViewed: true
+        });
+      } else {
+        await updateDoc(ref, {
+          connectedHelperUid: user.uid,
+          ownerViewed: false
+        });
+        setToast("Connection Made! Neighbor notified.");
+      }
+    } catch (error) {
+      console.error("Connection toggle failed:", error);
     } finally {
       setProcessingId(null);
     }
@@ -453,6 +586,7 @@ export default function Dashboard() {
         streetName: profile.streetName,
         natureIcon: profile.natureIcon,
         status: "open",
+        connectedHelperUid: null,
         createdAt: new Date().toISOString(),
       });
       setIsRequestModalOpen(false);
@@ -472,7 +606,23 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-sand flex flex-col p-4 md:p-[60px]">
       <GlobalNav />
+      {/* Deeds Modal */}
+      <AnimatePresence>
+        {isDeedsModalOpen && (
+          <DeedsModal 
+            onClose={() => setIsDeedsModalOpen(false)}
+            myClaims={myClaims}
+            myActiveRequests={myActiveRequests}
+            processingId={processingId}
+            onClaim={toggleClaim}
+            onHelpClaim={toggleHelpClaim}
+            onReqClaim={toggleRequestConnection}
+            onResolve={resolveRequest}
+          />
+        )}
+      </AnimatePresence>
 
+      {/* Main Main Grid */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-8 grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 mt-4">
         
         {/* Left Sidebar - Navigation */}
@@ -492,7 +642,7 @@ export default function Dashboard() {
           {profile?.role === "business" && (
             <div className="bg-paper p-6 rounded-[32px] border-4 border-ink shadow-xl">
               <div className="text-[10px] uppercase tracking-widest text-sage font-bold mb-4">Business Dashboard</div>
-              <Link to="/business/manage" className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-forest text-paper rounded-2xl font-bold text-xs uppercase tracking-widest shadow-lg hover:bg-opacity-90 transition-all mb-3">
+              <Link to="/business/manage" className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-forest text-paper rounded-2xl font-bold text-xs uppercase tracking-widest shadow-lg hover:bg-opacity-90 transition-all mb-3 text-center">
                 Manage Listing
               </Link>
               <div className="grid grid-cols-1 gap-2">
@@ -509,6 +659,37 @@ export default function Dashboard() {
                   <Calendar size={18} /> Post Event
                 </button>
               </div>
+
+              {/* Business Active Deeds */}
+              {(myClaims.length > 0 || myActiveRequests.length > 0) && (
+                <div className="mt-6 pt-6 border-t border-sage/10">
+                  <button 
+                    onClick={handleDeedToggle}
+                    className="w-full flex items-center justify-between group px-2 py-3 hover:bg-sand rounded-2xl transition-all"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1">
+                        {myClaims.length > 0 && (
+                          <div className="w-6 h-6 rounded-full bg-sage/20 flex items-center justify-center text-[10px] font-black text-forest border border-forest/10 shadow-sm">
+                            {myClaims.length}
+                          </div>
+                        )}
+                        {myActiveRequests.length > 0 && (
+                          <motion.div 
+                            animate={myActiveRequests.some(r => r.isNew) ? { scale: [1, 1.2, 1], rotate: [0, 5, -5, 0] } : {}}
+                            transition={myActiveRequests.some(r => r.isNew) ? { repeat: Infinity, duration: 2 } : {}}
+                            className="w-6 h-6 rounded-full bg-amber-400 flex items-center justify-center text-[10px] font-black text-white shadow-md border border-white"
+                          >
+                            {myActiveRequests.length}
+                          </motion.div>
+                        )}
+                      </div>
+                      <span className="font-serif text-xl text-forest">Active Deeds</span>
+                    </div>
+                    <ArrowRight size={18} className="text-sage opacity-40 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -518,7 +699,7 @@ export default function Dashboard() {
               <div className="grid grid-cols-1 gap-2">
                 <button 
                   onClick={() => setIsHelpModalOpen(true)}
-                  className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-forest text-paper rounded-2xl font-bold text-xs uppercase tracking-widest shadow-lg hover:bg-opacity-90 transition-all"
+                  className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-forest text-paper rounded-2xl font-bold text-xs uppercase tracking-widest shadow-lg hover:bg-opacity-90 transition-all font-sans"
                 >
                   <Heart size={18} /> Offer Help
                 </button>
@@ -529,6 +710,37 @@ export default function Dashboard() {
                   <Calendar size={18} /> Post Event
                 </button>
               </div>
+
+              {/* Neighbor Active Deeds */}
+              {(myClaims.length > 0 || myActiveRequests.length > 0) && (
+                <div className="mt-6 pt-6 border-t border-sage/10">
+                  <button 
+                    onClick={handleDeedToggle}
+                    className="w-full flex items-center justify-between group px-2 py-3 hover:bg-sand rounded-2xl transition-all"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1">
+                        {myClaims.length > 0 && (
+                          <div className="w-6 h-6 rounded-full bg-sage/20 flex items-center justify-center text-[10px] font-black text-forest border border-forest/10 shadow-sm">
+                            {myClaims.length}
+                          </div>
+                        )}
+                        {myActiveRequests.length > 0 && (
+                          <motion.div 
+                            animate={myActiveRequests.some(r => r.isNew) ? { scale: [1, 1.2, 1], rotate: [0, 5, -5, 0] } : {}}
+                            transition={myActiveRequests.some(r => r.isNew) ? { repeat: Infinity, duration: 2 } : {}}
+                            className="w-6 h-6 rounded-full bg-amber-400 flex items-center justify-center text-[10px] font-black text-white shadow-md border border-white"
+                          >
+                            {myActiveRequests.length}
+                          </motion.div>
+                        )}
+                      </div>
+                      <span className="font-serif text-xl text-forest">Active Deeds</span>
+                    </div>
+                    <ArrowRight size={18} className="text-sage opacity-40 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </aside>
@@ -563,13 +775,13 @@ export default function Dashboard() {
             
             {/* Quick Jump Bar */}
             <div className="flex overflow-x-auto gap-6 py-3 border-b border-sage/10 scrollbar-hide no-scrollbar -mx-2 md:mx-0 px-2">
-              <button onClick={() => scrollToSection('feed', 'feed-events')} className="whitespace-nowrap text-[9px] font-black text-sage hover:text-forest uppercase tracking-widest transition-colors flex items-center gap-1.5 active:scale-95">
+              <button onClick={() => scrollToSection('feed', 'feed-events')} className="whitespace-nowrap text-[9px] font-semibold text-sage hover:text-forest uppercase tracking-widest transition-colors flex items-center gap-1.5 active:scale-95 shadow-text-pop">
                 <div className="w-1 h-1 bg-forest rounded-full" /> Jump to Events
               </button>
-              <button onClick={() => scrollToSection('feed', 'feed-resources')} className="whitespace-nowrap text-[9px] font-black text-sage hover:text-forest uppercase tracking-widest transition-colors flex items-center gap-1.5 active:scale-95">
+              <button onClick={() => scrollToSection('feed', 'feed-resources')} className="whitespace-nowrap text-[9px] font-semibold text-sage hover:text-forest uppercase tracking-widest transition-colors flex items-center gap-1.5 active:scale-95 shadow-text-pop">
                 <div className="w-1 h-1 bg-forest rounded-full" /> Newest Freebies
               </button>
-              <button onClick={() => scrollToSection('directory')} className="whitespace-nowrap text-[9px] font-black text-sage hover:text-forest uppercase tracking-widest transition-colors flex items-center gap-1.5 active:scale-95">
+              <button onClick={() => scrollToSection('directory')} className="whitespace-nowrap text-[9px] font-semibold text-sage hover:text-forest uppercase tracking-widest transition-colors flex items-center gap-1.5 active:scale-95 shadow-text-pop">
                 <div className="w-1 h-1 bg-forest rounded-full" /> Business Directory
               </button>
             </div>
@@ -586,16 +798,14 @@ export default function Dashboard() {
                       {getGreeting()}, <span className="text-forest/80">{profile?.displayName?.split(' ')[0] || 'Neighbor'}!</span>
                     </h1>
                     <div className="w-full pt-3 mt-4 border-t border-sage/20 flex items-center justify-between">
-                      <p className="text-sage/60 text-sm font-sans font-medium tracking-wide">
+                      <p className="text-sage font-sans font-semibold tracking-wide text-sm shadow-text-pop">
                         {events.length} New Events <span className="text-forest mx-1">•</span> {resources.length} Freebies <span className="text-forest mx-1">•</span> {assistanceRequests.length} Help Requests
                       </p>
                     </div>
                   </div>
                   
-                  {resources.length === 0 && events.length === 0 && (
-                    <div className="p-12 text-center bg-paper/50 rounded-[40px] border-4 border-dashed border-sage">
-                      <p className="font-serif text-xl text-sage">The feed is quiet today. Check back later!</p>
-                    </div>
+                  {resources.length === 0 && events.length === 0 && helpOffers.length === 0 && assistanceRequests.length === 0 && (
+                    <EmptyState message="It's a quiet day in the ALT! Why not post a help offer or start a conversation?" />
                   )}
 
                   {resources.length > 0 && (
@@ -622,6 +832,7 @@ export default function Dashboard() {
                               isOwner={r.ownerUid === user?.uid}
                               phone={biz?.phone}
                               quantity={r.quantity}
+                              isVerified={biz?.verified}
                             />
                           );
                         })}
@@ -649,6 +860,11 @@ export default function Dashboard() {
                             email={offerProfile?.email}
                             phone={offerProfile?.phone}
                             isOwner={h.userUid === user?.uid}
+                            isVerified={offerProfile?.verified || offerProfile?.role === 'master-admin' || offerProfile?.role === 'business'}
+                            claimedBy={h.claimedBy}
+                            onEdit={() => startEditHelpOffer(h)}
+                            onDelete={() => deleteHelpOffer(h.id)}
+                            onViewClaims={() => viewHelpOfferClaims(h)}
                           />
                         );
                       })}
@@ -685,19 +901,25 @@ export default function Dashboard() {
                   )}
                   {assistanceRequests.slice(0, 5).map(req => {
                     const requester = allUsers.find(u => u.uid === req.userUid);
+                    const isConnected = req.connectedHelperUid === user?.uid;
                     return (
                       <FeedItem 
                         key={req.id} 
                         title={req.title} 
-                        business={req.isAnonymous ? (req.userName || "Neighbor") : req.userName} 
+                        business={req.userName} 
                         description={req.description} 
                         type="request" 
                         contactPreference={req.contactPreference}
                         streetName={req.streetName}
                         isAnonymous={req.isAnonymous}
                         natureIcon={req.natureIcon}
-                        email={req.isAnonymous ? undefined : requester?.email}
-                        phone={req.isAnonymous ? undefined : requester?.phone}
+                        email={requester?.email}
+                        phone={requester?.phone}
+                        isVerified={requester?.verified || requester?.role === 'master-admin' || requester?.role === 'business'}
+                        helperUid={req.connectedHelperUid}
+                        onConnect={() => toggleRequestConnection(req.id, isConnected)}
+                        isLoading={processingId === req.id}
+                        isOwner={req.userUid === user?.uid}
                       />
                     );
                   })}
@@ -706,13 +928,37 @@ export default function Dashboard() {
 
               {activeTab === "events" && (
                 <motion.div key="events" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
-                  <div className="flex justify-between items-center">
-                    <h2 className="text-3xl font-serif text-forest">Community Events</h2>
+                  <div className="flex flex-col gap-6 mb-2">
+                    <h2 className="text-3xl font-serif text-forest text-center md:text-left">Community Events</h2>
+                    <div className="flex justify-center w-full">
+                      <div className="flex bg-sand/50 p-1 rounded-full border border-sage/10 shadow-inner">
+                        <button 
+                          onClick={() => { setEventViewMode("list"); setCalendarSelectedDate(null); }}
+                          className={`px-6 py-2 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${eventViewMode === "list" ? "bg-forest text-paper shadow-lg" : "text-sage hover:text-forest"}`}
+                        >
+                          List
+                        </button>
+                        <button 
+                          onClick={() => setEventViewMode("calendar")}
+                          className={`px-6 py-2 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${eventViewMode === "calendar" ? "bg-forest text-paper shadow-lg" : "text-sage hover:text-forest"}`}
+                        >
+                          Calendar
+                        </button>
+                      </div>
+                    </div>
                   </div>
+
+                  {eventViewMode === "calendar" && (
+                    <CalendarGrid 
+                      events={events} 
+                      selectedDate={calendarSelectedDate} 
+                      onSelectDate={setCalendarSelectedDate} 
+                    />
+                  )}
                   
                   <div className="grid gap-6">
-                    {events.length > 0 ? (
-                      events.map(e => (
+                    {(calendarSelectedDate ? events.filter(e => e.date === calendarSelectedDate) : events).length > 0 ? (
+                      (calendarSelectedDate ? events.filter(e => e.date === calendarSelectedDate) : events).map(e => (
                         <EventCard 
                           key={e.id} 
                           event={e} 
@@ -722,21 +968,7 @@ export default function Dashboard() {
                         />
                       ))
                     ) : (
-                      <div className="text-center py-20 bg-paper/50 rounded-[40px] border-4 border-dashed border-sand/30 flex flex-col items-center gap-6">
-                        <div className="w-16 h-16 bg-sand/30 rounded-full flex items-center justify-center text-sage">
-                          <Calendar size={32} />
-                        </div>
-                        <div className="space-y-2">
-                          <p className="text-forest font-serif text-2xl">No gatherings planned yet</p>
-                          <p className="text-sage font-medium italic">Why not start one?</p>
-                        </div>
-                        <button 
-                          onClick={() => setIsHelpModalOpen(true)}
-                          className="px-8 py-4 bg-forest text-paper rounded-2xl font-bold text-xs uppercase tracking-widest shadow-xl hover:shadow-forest/20 transition-all flex items-center gap-2"
-                        >
-                          <Heart size={16} /> Offer Help
-                        </button>
-                      </div>
+                      <EmptyState message="It's a quiet day in the ALT! Why not post a help offer or start a conversation?" />
                     )}
                   </div>
                 </motion.div>
@@ -756,9 +988,10 @@ export default function Dashboard() {
                         isOwner={o.userUid === user?.uid}
                         onEdit={() => startEditHelpOffer(o)}
                         onDelete={() => deleteHelpOffer(o.id)}
+                        onViewClaims={() => viewHelpOfferClaims(o)}
                       />
                     ))}
-                    {helpOffers.length === 0 && <p className="text-center py-10 text-sage font-bold uppercase tracking-widest">No help offers yet</p>}
+                    {helpOffers.length === 0 && <EmptyState message="It's a quiet day in the ALT! Why not post a help offer or start a conversation?" />}
                   </div>
                 </motion.div>
               )}
@@ -789,6 +1022,7 @@ export default function Dashboard() {
                         />
                       );
                     })}
+                    {resources.length === 0 && <EmptyState message="It's a quiet day in the ALT! Why not post a help offer or start a conversation?" />}
                   </div>
                 </motion.div>
               )}
@@ -989,42 +1223,6 @@ export default function Dashboard() {
                 <p className="text-[10px] text-sage font-bold uppercase tracking-widest">No favorites yet</p>
               )}
             </div>
-
-            {/* My Claims Section */}
-            <div className="mt-10 pt-10 border-t-2 border-sand">
-              <h3 className="font-serif text-xl text-forest mb-6">Your Claims</h3>
-              <div className="space-y-3">
-                {[
-                  ...resources.filter(r => r.claimedBy?.includes(user?.uid)).map(r => ({ ...r, category: 'Freebie' })),
-                  ...helpOffers.filter(o => o.claimedBy?.includes(user?.uid)).map(o => ({ ...o, category: 'Help Offer', title: o.capacity, businessName: o.userName }))
-                ].length > 0 ? (
-                  [
-                    ...resources.filter(r => r.claimedBy?.includes(user?.uid)).map(r => ({ ...r, category: 'Freebie' })),
-                    ...helpOffers.filter(o => o.claimedBy?.includes(user?.uid)).map(o => ({ ...o, category: 'Help Offer', title: o.capacity, businessName: o.userName }))
-                  ].map(item => (
-                    <div key={item.id} className="p-4 bg-sand/30 rounded-2xl border border-forest/5 flex justify-between items-center group">
-                      <div className="flex-1">
-                        <div className="text-[10px] font-bold text-forest uppercase tracking-widest mb-1 truncate">{item.title}</div>
-                        <div className="flex items-center gap-2">
-                          <div className="text-[8px] text-sage font-bold uppercase tracking-tighter">{item.businessName}</div>
-                          <span className="text-[7px] px-1 bg-forest/10 text-forest rounded uppercase font-black">{item.category}</span>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={() => processingId === item.id ? null : (item.category === 'Freebie' ? toggleClaim(item.id, true) : toggleHelpClaim(item.id, true))}
-                        className={`p-2 text-sage transition-all ${processingId === item.id ? 'animate-spin' : 'opacity-0 group-hover:opacity-100 hover:text-red-400'}`}
-                        title="Unclaim"
-                        disabled={processingId === item.id}
-                      >
-                        {processingId === item.id ? <Loader2 size={14} /> : <X size={14} />}
-                      </button>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-[10px] text-sage font-bold uppercase tracking-widest">No active claims</p>
-                )}
-              </div>
-            </div>
           </div>
 
           <div className="bg-forest p-8 rounded-[32px] text-paper shadow-soft-glow border border-white/10">
@@ -1058,15 +1256,15 @@ export default function Dashboard() {
             <form onSubmit={handlePostResource} className="space-y-4">
               <Input label="Freebie Title" placeholder="e.g. Free Plumbing Advice" value={postData.title} onChange={(v) => setPostData({ ...postData, title: v })} />
               <TextArea label="Short Description" placeholder="Keep it brief (e.g. 2 sentences)..." value={postData.description} onChange={(v) => setPostData({ ...postData, description: v })} />
-              <div className="grid grid-cols-2 gap-4">
-                <div>
+              <div className="flex flex-col sm:flex-row gap-6">
+                <div className="flex-1">
                   <label className="text-[10px] uppercase tracking-widest text-sage font-bold mb-2 block">Type</label>
                   <div className="flex gap-2">
                     <TypeButton active={postData.type === "resource"} onClick={() => setPostData({ ...postData, type: "resource" })}>Resource</TypeButton>
                     <TypeButton active={postData.type === "service"} onClick={() => setPostData({ ...postData, type: "service" })}>Service</TypeButton>
                   </div>
                 </div>
-                <div>
+                <div className="flex-1">
                   <label className="text-[10px] uppercase tracking-widest text-sage font-bold mb-2 block">Quantity Available</label>
                   <input 
                     type="number" 
@@ -1139,7 +1337,7 @@ export default function Dashboard() {
               <div className="flex items-center gap-2 px-2 py-4">
                 <Shield className="text-forest" size={14} />
                 <p className="text-[9px] text-sage font-bold leading-tight uppercase tracking-wider">
-                  Always visible: Your street name and category of request.
+                  Posted Anonymously. Note: Your identity and contact info will only be shared with the neighbor who offers to help.
                 </p>
               </div>
 
@@ -1259,13 +1457,71 @@ export default function Dashboard() {
           )}
         </AnimatePresence>
         
-        <button 
+        <motion.button 
           onClick={() => setIsFabOpen(!isFabOpen)}
-          className={`w-16 h-16 rounded-full bg-forest text-paper flex items-center justify-center shadow-xl hover:scale-105 transition-all pointer-events-auto ${isFabOpen ? 'rotate-45' : ''}`}
+          animate={{
+            scale: [1, 1.05, 1],
+          }}
+          transition={{
+            duration: 3,
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
+          className={`w-16 h-16 rounded-full bg-forest text-paper flex items-center justify-center shadow-xl pointer-events-auto transition-all ${isFabOpen ? 'rotate-45' : ''}`}
         >
           <Plus size={32} />
-        </button>
+        </motion.button>
       </div>
+
+      <AnimatePresence>
+        {toast && <SuccessToast message={toast} />}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {claimsModalData && (
+          <Modal title="Interested Neighbors" onClose={() => setClaimsModalData(null)}>
+            <div className="space-y-4">
+              <div className="text-[10px] uppercase tracking-widest text-sage font-bold mb-2">Potential help for:</div>
+              <div className="p-4 bg-forest/5 rounded-2xl border border-forest/10 mb-6 font-serif text-lg text-forest italic leading-tight">
+                "{claimsModalData.title}"
+              </div>
+              <div className="space-y-3">
+                {claimsModalData.claimants.map(neighbor => (
+                  <div key={neighbor.uid} className="p-4 bg-sand/30 rounded-2xl border border-sage/10 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-paper rounded-xl text-forest shadow-sm border border-sage/5">
+                        {neighbor.natureIcon && NATURE_ICONS[neighbor.natureIcon] ? React.createElement(NATURE_ICONS[neighbor.natureIcon], { size: 16 }) : <Users size={16} />}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-forest truncate">{neighbor.displayName || "Neighbor"}</div>
+                        <div className="text-[8px] font-semibold text-sage uppercase tracking-widest truncate">{neighbor.streetName}</div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1.5 items-end flex-shrink-0">
+                      {neighbor.email && (
+                        <a href={`mailto:${neighbor.email}`} className="text-forest hover:text-sage transition-all flex items-center gap-1.5 text-[8px] font-black uppercase tracking-widest bg-paper px-2 py-1 rounded-lg border border-sage/10">
+                          <Mail size={10} /> Email
+                        </a>
+                      )}
+                      {neighbor.phone && (
+                        <a href={`tel:${neighbor.phone}`} className="text-forest hover:text-sage transition-all flex items-center gap-1.5 text-[8px] font-black uppercase tracking-widest bg-paper px-2 py-1 rounded-lg border border-sage/10">
+                          <Phone size={10} /> Call
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {claimsModalData.claimants.length === 0 && (
+                  <div className="text-center py-12 bg-sand/10 rounded-3xl border-2 border-dashed border-sage/20">
+                    <p className="text-sage font-serif italic text-lg mb-2">No one has reached out yet</p>
+                    <p className="text-[9px] uppercase tracking-widest font-bold text-sage/60">Community vibes are still warming up!</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </Modal>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1307,158 +1563,211 @@ function ClaimedOfferCard({ title, neighborName, neighborStreet, neighborEmail, 
   );
 }
 
-function FeedItem({ title, business, businessId, description, type, contactPreference, streetName, isAnonymous, natureIcon, isClaimed, onClaim, isLoading, isOwner, email, phone, quantity, date, time, location }: { title: string, business: string, businessId?: string, description: string, type: 'resource' | 'service' | 'event' | 'request' | 'help', key?: any, contactPreference?: string, streetName?: string, isAnonymous?: boolean, natureIcon?: string, isClaimed?: boolean, onClaim?: () => void, isLoading?: boolean, isOwner?: boolean, email?: string, phone?: string, quantity?: number, date?: string, time?: string, location?: string }) {
+function FeedItem({ title, business, businessId, description, type, contactPreference, streetName, isAnonymous, natureIcon, isClaimed, onClaim, isLoading, isOwner, email, phone, quantity, date, time, location, isVerified, claimedBy, onEdit, onDelete, onViewClaims, helperUid, onConnect }: { title: string, business: string, businessId?: string, description: string, type: 'resource' | 'service' | 'event' | 'request' | 'help', key?: any, contactPreference?: string, streetName?: string, isAnonymous?: boolean, natureIcon?: string, isClaimed?: boolean, onClaim?: () => void, isLoading?: boolean, isOwner?: boolean, email?: string, phone?: string, quantity?: number, date?: string, time?: string, location?: string, isVerified?: boolean, claimedBy?: string[], onEdit?: () => void, onDelete?: () => void, onViewClaims?: () => void, helperUid?: string | null, onConnect?: () => void }) {
+  const { user } = useUser();
   const smsBody = encodeURIComponent(`Hi ${business}! I'm your neighbor from ALT Business Connections. I'm interested in: ${title}`);
+  
+  // We'll use local variables for connection state if passed via props
+  const isConnected = type === 'request' && !!helperUid;
+  const isUserConnected = type === 'request' && helperUid === user?.uid;
+  const isHelper = user?.uid === helperUid;
+  const showIdentity = !isAnonymous || isOwner || isHelper;
+  const displayBusiness = showIdentity ? business : "Neighbor in Need";
+  const displayStreet = showIdentity ? streetName : "The Divide";
+  const displayEmail = (type === 'request') ? ((isOwner || isHelper) ? email : undefined) : email;
+  const displayPhone = (type === 'request') ? ((isOwner || isHelper) ? phone : undefined) : phone;
   
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return "";
     try {
-      // Handle the yyyy-mm-dd input from HTML date picker
       const [year, month, day] = dateStr.split('-');
-      if (year && month && day) {
-        return `${month}/${day}/${year}`;
-      }
+      if (year && month && day) return `${month}/${day}/${year}`;
       return dateStr;
     } catch (e) {
       return dateStr;
     }
   };
 
-  const colors = {
-    resource: 'bg-[#6fb36f] text-paper shadow-sm border border-[#6fb36f]/20',
-    service: 'bg-[#6fb36f] text-paper shadow-sm border border-[#6fb36f]/20',
-    help: 'bg-[#92b492] text-paper shadow-sm border border-[#92b492]/20',
-    event: 'bg-amber-600 text-paper',
-    request: 'bg-sand text-forest border-2 border-forest'
-  };
+  const Icon = natureIcon ? NATURE_ICONS[natureIcon] : (type === 'event' ? Calendar : Building2);
 
-  const Icon = natureIcon ? NATURE_ICONS[natureIcon] : null;
+  const displayType = type === 'help' ? 'HELP OFFER' : (type === 'request' ? 'NEED HELP' : (type === 'resource' || type === 'service' ? 'FREEBIE' : type.toUpperCase()));
 
   return (
-    <div className={`p-8 rounded-[32px] border shadow-soft-glow relative overflow-hidden group hover:border-forest/20 transition-all ${type === 'resource' ? 'bg-sage/5 border-sage/20 shadow-sage/5' : 'bg-paper border-black/5'}`}>
-      {isAnonymous && type === 'request' && (
-        <div className="absolute top-0 right-0 px-4 py-1 bg-amber-50 text-[8px] font-bold uppercase tracking-[0.2em] text-amber-700 rounded-bl-xl border-l border-b border-amber-100 flex items-center gap-1">
-          <Shield size={8} /> Identity Protected
+    <div className={`p-6 rounded-[32px] border relative overflow-hidden group hover:border-forest/20 transition-all shadow-soft-glow ${type === 'resource' ? 'bg-sage/5 border-sage/20' : 'bg-white/85 border-black/5'}`}>
+      {/* Category Tag - Top Left */}
+      <div className="flex justify-start mb-4">
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-sand/30 text-forest rounded-full text-[8px] font-black uppercase tracking-[0.2em] border border-forest/5 shadow-sm">
+          {displayType}
+        </span>
+      </div>
+
+      {/* Branding Anchor Blob - Top Right */}
+      <div className="absolute top-4 right-4">
+        <div className="w-12 h-12 bg-sand rounded-[30%_70%_70%_30%/50%_40%_60%_40%] text-forest flex items-center justify-center border border-sage/10 shadow-soft-glow">
+          {Icon && <Icon size={20} />}
         </div>
-      )}
-      
-      <div className="flex justify-between items-start mb-4">
-        <div className="flex flex-wrap gap-2 items-center">
-          <span className={`px-3 py-1 rounded-full text-[8px] font-bold uppercase tracking-widest flex items-center gap-1.5 ${colors[type]}`}>
-            {(type === 'resource' || type === 'service' || type === 'help') && <Heart size={8} fill="currentColor" />}
-            {type === 'help' ? 'HELP OFFERS' : ((type === 'resource' || type === 'service') ? 'FREEBIE' : type)}
-          </span>
-          {(type === 'resource' || type === 'service') && (
-            <span className="bg-amber-100 text-amber-800 px-2 py-1 rounded-full text-[7px] font-black uppercase tracking-widest border border-amber-200/50">
-              Gift from {business}
-            </span>
+      </div>
+
+      {/* Left-Aligned Typography */}
+      <div className="pr-12 text-left space-y-3">
+        {isAnonymous && type === 'request' && (
+          <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-[7px] font-bold uppercase tracking-widest text-amber-700 rounded-lg mb-2">
+            <Shield size={8} /> Identity Protected
+          </div>
+        )}
+
+        {(type === 'resource' || type === 'service') ? (
+          <h4 className="font-serif text-2xl font-semibold text-forest leading-tight mb-1">{title}</h4>
+        ) : (
+          <h4 className="font-serif text-2xl font-semibold text-forest leading-tight mb-1">{title}</h4>
+        )}
+
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-2">
+            {type === 'event' ? (
+              <div className="flex items-center gap-2 text-[10px] font-black text-amber-600 uppercase tracking-widest">
+                <Calendar size={12} /> {formatDate(date)} {time && `@ ${time}`}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1 items-start text-left">
+                {businessId ? (
+                  <div className="flex items-center gap-1.5">
+                    <Link to={`/business/${businessId}`} className="text-[10px] font-semibold text-sage uppercase tracking-widest hover:text-forest transition-all underline decoration-sage/30 shadow-text-pop">{displayBusiness}</Link>
+                    {isVerified && (
+                      <div className="group/trust relative inline-flex items-center cursor-help">
+                        <Leaf size={10} className="text-forest fill-forest/10" />
+                        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-forest text-paper text-[8px] font-bold rounded opacity-0 group-hover/trust:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none uppercase tracking-widest">
+                          Verified
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-semibold text-sage uppercase tracking-widest shadow-text-pop">{displayBusiness}</span>
+                    {isVerified && showIdentity && (
+                      <div className="group/trust relative inline-flex items-center cursor-help">
+                        <Leaf size={10} className="text-forest fill-forest/10" />
+                        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-forest text-paper text-[8px] font-bold rounded opacity-0 group-hover/trust:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none uppercase tracking-widest">
+                          Verified
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {displayStreet && (
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-sage/60 shadow-text-pop">{displayStreet}</span>
+                )}
+              </div>
+            )}
+          </div>
+          
+          {type === 'event' && location && (
+            <div className="flex items-center gap-1.5 text-[10px] font-bold text-sage uppercase tracking-widest">
+              <MapPin size={12} className="text-forest" /> {location}
+            </div>
           )}
         </div>
-        {streetName && (
-          <span className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-widest text-sage">
-            <MapPin size={8} /> {streetName}
-          </span>
+
+        <p className="text-ink/80 leading-relaxed font-medium text-sm line-clamp-3">
+          {description}
+        </p>
+
+        {type === 'request' && contactPreference && (
+          <div className="bg-sand/20 p-4 rounded-2xl border-l-4 border-forest">
+            <div className="text-[8px] uppercase tracking-widest text-forest font-black mb-1">Assistance Instructions</div>
+            <p className="text-xs text-forest/80 italic font-medium leading-relaxed">{contactPreference}</p>
+          </div>
         )}
       </div>
-      
-      {/* Swap long description for title for space saving in business posts */}
-      {(type === 'resource' || type === 'service') ? (
-        <p className="text-forest text-lg font-serif mb-6 leading-tight italic">"{title}"</p>
-      ) : (
-        <>
-          <h4 className="font-serif text-2xl text-forest mb-1">{title}</h4>
-          <div className="flex flex-col gap-2 mb-4">
-            <div className="flex items-center gap-2">
-              {type === 'event' ? (
-                <div className="flex items-center gap-2 text-[10px] font-bold text-amber-600 uppercase tracking-widest bg-amber-50 px-2 py-1 rounded-lg">
-                  <Calendar size={12} /> {formatDate(date)} {time && `@ ${time}`}
+
+      <div className="flex items-center justify-between mt-6 pt-4 border-t border-sand/50">
+        <div className="flex items-center gap-4 w-full">
+          {(type === 'resource' || type === 'service' || type === 'help') ? (
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-4">
+                {quantity !== undefined && type === 'resource' && (
+                  <div className="text-[10px] font-black uppercase tracking-widest text-sage">
+                    {quantity} Available
+                  </div>
+                )}
+                {isOwner ? (
+                  <div className="flex flex-wrap gap-2">
+                    {type === 'help' && (claimedBy?.length || 0) > 0 && (
+                      <button 
+                        onClick={onViewClaims}
+                        className="px-4 py-2 bg-sand text-forest rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-forest hover:text-paper transition-all border border-forest/10 flex items-center gap-1.5"
+                      >
+                        <Users size={12} /> View Claims ({(claimedBy?.length || 0)})
+                      </button>
+                    )}
+                    {onEdit && (
+                      <button onClick={onEdit} className="px-4 py-2 bg-sand text-forest rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-forest hover:text-paper transition-all border border-forest/10">
+                        Edit
+                      </button>
+                    )}
+                    {onDelete && (
+                      <button onClick={onDelete} className="px-4 py-2 bg-red-50 text-red-500 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-red-500 hover:text-paper transition-all border border-red-100">
+                        Remove
+                      </button>
+                    )}
+                    {!onEdit && !onDelete && !onViewClaims && <div className="text-[9px] font-black uppercase tracking-widest text-amber-600 italic">Your Post</div>}
+                  </div>
+                ) : (
+                  <button 
+                    disabled={isLoading}
+                    onClick={onClaim}
+                    className={`text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${isClaimed ? 'text-forest' : 'text-sage hover:text-forest'}`}
+                  >
+                    {isLoading ? <Loader2 className="animate-spin" size={12} /> : (isClaimed ? <><CheckCircle2 size={12} /> Claimed</> : <><Plus size={12} /> {type === 'help' ? 'Interested' : 'Claim'}</>)}
+                  </button>
+                )}
+              </div>
+              <div className="text-sage/20"><Heart size={12} fill="currentColor" /></div>
+            </div>
+          ) : (
+            <div className="flex gap-4">
+              {isConnected ? (
+                <div className="flex items-center gap-4">
+                  {isUserConnected ? (
+                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-forest">
+                      <CheckCircle2 size={14} className="text-forest" /> Connection Made!
+                    </div>
+                  ) : (
+                    <div className="text-[9px] font-black uppercase tracking-widest text-sage italic">Neighbor Connected</div>
+                  )}
+                  {isHelper && (
+                    <div className="flex gap-4">
+                      {displayPhone && (
+                        <a href={`sms:${displayPhone}?body=Hi Neighbor! I'm connecting to your assistance request on ALT: ${title}`} className="text-forest hover:text-sage transition-all flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest">
+                          <MessageSquare size={14} /> Text
+                        </a>
+                      )}
+                      {displayEmail && (
+                        <a href={`mailto:${displayEmail}`} className="text-forest hover:text-sage transition-all flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest">
+                          <Mail size={14} /> Email
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
-                <>
-                  {Icon && <div className="p-1 bg-sand rounded text-forest"><Icon size={12} /></div>}
-                  {businessId ? (
-                    <Link to={`/business/${businessId}`} className="text-xs font-bold text-sage uppercase tracking-wider hover:text-forest transition-all underline decoration-sage/30">{business}</Link>
-                  ) : (
-                    <div className="text-xs font-bold text-sage uppercase tracking-wider">{business}</div>
-                  )}
-                </>
+                isOwner ? (
+                  <div className="text-[9px] font-black uppercase tracking-widest text-amber-600 italic">Waiting for connection...</div>
+                ) : (
+                  <button 
+                    onClick={onConnect}
+                    disabled={isLoading}
+                    className="text-[10px] font-black uppercase tracking-widest text-forest hover:text-sage flex items-center gap-1.5"
+                  >
+                    {isLoading ? <Loader2 className="animate-spin" size={12} /> : <>Connect <ArrowRight size={12} /></>}
+                  </button>
+                )
               )}
-              <div className="w-1 h-1 bg-sand rounded-full"></div>
-              <div className="text-sage/40 hover:text-sage transition-colors" title="Vetted Resident"><HouseHeart size={12} /></div>
             </div>
-            {type === 'event' && location && (
-              <div className="flex items-center gap-1.5 text-[10px] font-bold text-sage uppercase tracking-widest">
-                <MapPin size={12} className="text-forest" /> {location}
-              </div>
-            )}
-          </div>
-          <p className="text-ink/80 leading-relaxed mb-6 font-medium">{description}</p>
-        </>
-      )}
-
-      {(type === 'resource' || type === 'service') && (
-        <div className="flex items-center gap-2 mb-6">
-          {Icon && <div className="p-1 bg-sand rounded text-forest"><Icon size={12} /></div>}
-          {businessId ? (
-            <Link to={`/business/${businessId}`} className="text-xs font-bold text-sage uppercase tracking-wider hover:text-forest transition-all underline decoration-sage/30">{business}</Link>
-          ) : (
-            <div className="text-xs font-bold text-sage uppercase tracking-wider">{business}</div>
           )}
-          <div className="w-1 h-1 bg-sand rounded-full"></div>
-          <div className="text-sage/40 hover:text-sage transition-colors" title="Partner Provider"><BadgeCheck size={12} /></div>
         </div>
-      )}
-      
-      {type === 'request' && contactPreference && (
-        <div className="bg-sand/30 p-5 rounded-2xl mb-6 border-l-4 border-forest shadow-inner">
-          <div className="flex items-center gap-2 text-[8px] uppercase tracking-widest text-forest font-black mb-2">
-            <Shield size={10} /> Assistance Instructions
-          </div>
-          <p className="text-sm text-forest/80 italic font-medium leading-relaxed">{contactPreference}</p>
-        </div>
-      )}
-
-      <div className="flex items-center justify-between mt-4 pt-4 border-t border-sand">
-        {(type === 'resource' || type === 'service' || type === 'help') ? (
-          <div className="flex items-center gap-6">
-            {quantity !== undefined && type === 'resource' && (
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-sage border-r border-sand pr-4">
-                <div className="w-1.5 h-1.5 rounded-full bg-forest animate-pulse"></div>
-                {quantity} Available
-              </div>
-            )}
-            {isOwner ? (
-              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-600 italic">Your Post</div>
-            ) : (
-              <button 
-                disabled={isLoading}
-                onClick={onClaim}
-                className={`text-[10px] font-bold uppercase tracking-[0.2em] transition-all flex items-center gap-2 ${isClaimed ? 'text-forest' : 'text-sage hover:text-forest'}`}
-              >
-                {isLoading ? <Loader2 className="animate-spin" size={12} /> : (isClaimed ? <><CheckCircle2 size={12} /> Claimed</> : <><Plus size={12} /> {type === 'help' ? 'Interested' : (type === 'resource' || type === 'service' ? 'Claim Freebie' : 'Interested')}</>)}
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="flex gap-4">
-            {phone && (
-              <a href={`sms:${phone}?body=${smsBody}`} title="Text Poster" className="text-forest hover:text-sage transition-all flex items-center">
-                <MessageSquareHeart size={16} />
-              </a>
-            )}
-            {email && (
-              <a href={`mailto:${email}`} title="Email Poster" className="text-forest hover:text-sage transition-all flex items-center">
-                <Mail size={16} />
-              </a>
-            )}
-            {!phone && !email && (
-              <button className="text-[10px] font-bold uppercase tracking-[0.2em] text-forest hover:text-sage transition-all flex items-center gap-2">
-                Interact <ArrowRight size={12} />
-              </button>
-            )}
-          </div>
-        )}
-        <div className="text-sage/40" title="Neighbor Connection"><HeartHandshake size={12} /></div>
+        <div className="text-sage/20"><Heart size={12} fill="currentColor" /></div>
       </div>
     </div>
   );
@@ -1469,56 +1778,73 @@ function ResourceCard({ title, business, businessId, description, isClaimed, onC
   const Icon = natureIcon ? NATURE_ICONS[natureIcon] : Building2;
   
   return (
-    <div className="bg-paper p-6 rounded-[32px] border-2 border-sage/20 flex flex-col md:flex-row justify-between items-center md:items-center gap-6 hover:border-forest/20 transition-all shadow-soft-glow max-w-[calc(100vw-2rem)] mx-auto md:max-w-none">
-      <div className="flex-1 flex flex-col md:flex-row gap-5 items-center md:items-start w-full text-center md:text-left">
+    <div className="bg-paper p-6 rounded-[32px] border border-forest/10 flex flex-col gap-4 hover:border-forest/30 transition-all shadow-soft-glow relative overflow-hidden group">
+      {/* FREEBIE Badge - Top Left */}
+      <div className="flex justify-start">
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-[8px] font-black uppercase tracking-[0.2em] border border-amber-200/50 shadow-sm">
+          <Sparkles size={8} /> FREEBIE
+        </span>
+      </div>
+
+      {/* Business Logo Blob - Absolute Top Right */}
+      <div className="absolute top-4 right-4">
         {businessId ? (
-          <Link to={`/business/${businessId}`} className="p-4 bg-sand rounded-[30%_70%_70%_30%/50%_40%_60%_40%] text-forest hover:bg-forest hover:text-paper transition-all flex-shrink-0 shadow-soft-glow group mx-auto md:mx-0 border border-sage/10">
-            <Icon size={28} className="group-hover:scale-110 transition-transform" />
+          <Link to={`/business/${businessId}`} className="block w-12 h-12 bg-sand rounded-[30%_70%_70%_30%/50%_40%_60%_40%] text-forest hover:bg-forest hover:text-paper transition-all shadow-soft-glow flex items-center justify-center border border-sage/10 group-alt">
+            <Icon size={20} className="group-alt-hover:scale-110 transition-transform" />
           </Link>
         ) : (
-          <div className="p-4 bg-sand rounded-[30%_70%_70%_30%/50%_40%_60%_40%] text-forest flex-shrink-0 mx-auto md:mx-0 border border-sage/10">
-            <Icon size={28} />
+          <div className="w-12 h-12 bg-sand rounded-[30%_70%_70%_30%/50%_40%_60%_40%] text-forest flex items-center justify-center border border-sage/10 shadow-soft-glow">
+            <Icon size={20} />
           </div>
         )}
-        <div className="min-w-0 w-full flex-1">
-          <div className="flex flex-col mb-1 items-center md:items-start">
-            <h4 className="font-serif text-xl text-forest leading-tight mb-1">{title}</h4>
-            <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 mb-2">
-              <span className={`px-2 py-0.5 text-[8px] font-bold rounded-full uppercase tracking-widest ${isAvailable ? 'bg-forest/10 text-forest border border-forest/20' : (isClaimed ? 'bg-forest/10 text-forest' : 'bg-red-50 text-red-500 border border-red-200')}`}>
-                {isClaimed ? 'You claimed this' : isAvailable ? `${quantity - claimCount} remaining` : 'Fully Claimed'}
-              </span>
-              {businessId ? (
-                <Link to={`/business/${businessId}`} className="text-[10px] font-black text-sage uppercase tracking-widest hover:text-forest transition-all underline decoration-sage/30 truncate max-w-[150px]">{business}</Link>
-              ) : (
-                <p className="text-[10px] font-black text-sage uppercase tracking-widest truncate max-w-[150px]">{business}</p>
-              )}
-            </div>
-          </div>
+      </div>
+
+      {/* Left-Aligned Content Area */}
+      <div className="flex-1 flex flex-col items-start text-left pr-12">
+        <div className="flex flex-col gap-1 w-full">
+          <h4 className="font-serif text-2xl font-semibold text-forest leading-tight group-hover:text-forest/80 transition-colors">{title}</h4>
           
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <span className={`px-2 py-0.5 text-[8px] font-semibold rounded-full uppercase tracking-widest border ${isAvailable ? 'bg-forest/5 text-forest border-forest/20' : (isClaimed ? 'bg-forest/5 text-forest border-forest/20' : 'bg-red-50 text-red-500 border-red-200')}`}>
+              {isClaimed ? 'You claimed this' : isAvailable ? `${quantity - claimCount} remaining` : 'Fully Claimed'}
+            </span>
+            {businessId ? (
+              <Link to={`/business/${businessId}`} className="text-[10px] font-semibold text-sage hover:text-forest transition-all uppercase tracking-widest truncate max-w-[150px] shadow-text-pop">{business}</Link>
+            ) : (
+              <p className="text-[10px] font-semibold text-sage uppercase tracking-widest truncate max-w-[150px] shadow-text-pop">{business}</p>
+            )}
+          </div>
+        </div>
+
+        <div className="w-full mt-2">
           {businessId ? (
-            <Link to={`/business/${businessId}`} className="group block w-full">
-              <p className="text-sm text-ink/70 font-medium line-clamp-2 md:line-clamp-1 group-hover:text-forest transition-colors break-words px-2 md:px-0">
+            <Link to={`/business/${businessId}`} className="group/link block">
+              <p className="text-sm text-ink/70 font-medium line-clamp-2 leading-relaxed">
                 {description}
-                <span className="ml-2 text-sage group-hover:underline text-[10px] font-bold inline-block">Read more →</span>
               </p>
+              <div className="mt-2 text-forest group-hover/link:translate-x-1 transition-transform text-[10px] font-black uppercase tracking-widest inline-flex items-center gap-1 group-hover/link:underline decoration-2">
+                Read more <ArrowRight size={12} />
+              </div>
             </Link>
           ) : (
-            <p className="text-sm text-ink/70 font-medium line-clamp-2 md:line-clamp-none break-words px-2 md:px-0">{description}</p>
+            <p className="text-sm text-ink/70 font-medium leading-relaxed">{description}</p>
           )}
         </div>
       </div>
-      <div className="flex items-center gap-3 w-full md:w-auto mt-2 md:mt-0">
+
+      {/* Action Footer */}
+      <div className="flex items-center justify-between gap-3 pt-4 border-t border-forest/5 mt-2">
         {isOwner ? (
-          <div className="w-full text-center md:w-auto px-8 py-4 bg-paper border-2 border-amber-200 text-amber-600 rounded-2xl font-bold text-[10px] uppercase tracking-widest italic shadow-sm">
-            Your Freebie
+          <div className="w-full text-center px-6 py-3 bg-paper border-2 border-amber-200 text-amber-600 rounded-2xl font-bold text-[9px] uppercase tracking-widest italic shadow-sm">
+            Your Local Post
           </div>
         ) : (
           <button 
             disabled={isLoading || (!isAvailable && !isClaimed)}
             onClick={onClaim}
-            className={`w-full md:w-auto flex items-center justify-center gap-2 px-10 py-4 rounded-2xl font-bold text-[10px] uppercase tracking-widest transition-all ${isClaimed ? 'bg-forest text-paper shadow-lg shadow-forest/20' : isAvailable ? 'bg-sand text-forest hover:bg-forest hover:text-paper shadow-md' : 'bg-sage/20 text-sage cursor-not-allowed'}`}
+            className={`flex-1 flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl font-bold text-[10px] uppercase tracking-widest transition-all ${isClaimed ? 'bg-forest text-paper shadow-lg shadow-forest/20' : isAvailable ? 'bg-forest text-paper hover:bg-forest/90 shadow-soft-glow' : 'bg-sage/20 text-sage cursor-not-allowed'}`}
           >
-            {isLoading ? <Loader2 className="animate-spin" size={14} /> : (isClaimed ? <><CheckCircle2 size={14} /> Claimed</> : isAvailable ? <><Plus size={14} /> Claim</> : 'Fully Claimed')}
+            {isLoading ? <Loader2 className="animate-spin" size={14} /> : (isClaimed ? <><CheckCircle2 size={14} /> Claimed</> : isAvailable ? <><Plus size={14} /> Claim Freebie</> : 'Fully Claimed')}
           </button>
         )}
       </div>
@@ -1530,18 +1856,24 @@ function DirectoryItem({ id, name, category, phone, logo }: { id: string, name: 
   const smsBody = encodeURIComponent(`Hi ${name}! I'm your neighbor from ALT Business Connections. I'm interested in your services...`);
   
   return (
-    <div className="bg-white/50 p-2 rounded-xl border border-sage/10 group hover:border-forest/20 transition-all shadow-soft-glow w-full overflow-hidden flex flex-col gap-2">
+    <div className="bg-white/85 p-2 rounded-xl border border-sage/10 group hover:border-forest/20 transition-all shadow-soft-glow w-full overflow-hidden flex flex-col gap-2">
       <div className="flex items-center gap-3 w-full">
         {/* Logo Anchor */}
-        <Link to={`/business/${id}`} className="flex-shrink-0">
-          {logo ? (
-            <img src={logo} alt={name} className="w-10 h-10 rounded-[30%_70%_70%_30%/50%_40%_60%_40%] object-cover border border-sage/20" referrerPolicy="no-referrer" />
-          ) : (
-            <div className="w-10 h-10 rounded-[30%_70%_70%_30%/50%_40%_60%_40%] bg-sand/30 flex items-center justify-center text-forest border border-sage/20">
-              <Building2 size={18} />
-            </div>
-          )}
-        </Link>
+        <motion.div 
+          whileHover={{ scale: 1.15, rotate: 5 }}
+          whileTap={{ scale: 0.95 }}
+          className="flex-shrink-0"
+        >
+          <Link to={`/business/${id}`}>
+            {logo ? (
+              <img src={logo} alt={name} className="w-10 h-10 rounded-[30%_70%_70%_30%/50%_40%_60%_40%] object-cover border border-sage/20" referrerPolicy="no-referrer" />
+            ) : (
+              <div className="w-10 h-10 rounded-[30%_70%_70%_30%/50%_40%_60%_40%] bg-sand/30 flex items-center justify-center text-forest border border-sage/20">
+                <Building2 size={18} />
+              </div>
+            )}
+          </Link>
+        </motion.div>
 
         {/* Flexible Center */}
         <div className="flex-1 min-w-0">
@@ -1603,11 +1935,163 @@ function FavoriteItem({ name, phone, onRemove }: { name: string, phone?: string,
 }
 
 // Helper Components
+function DeedsModal({ 
+  onClose, 
+  myClaims, 
+  myActiveRequests, 
+  processingId, 
+  onClaim, 
+  onHelpClaim, 
+  onReqClaim, 
+  onResolve 
+}: any) {
+  return (
+    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ opacity: 0 }} 
+        animate={{ opacity: 1 }} 
+        exit={{ opacity: 0 }} 
+        className="absolute inset-0 bg-ink/60 backdrop-blur-md" 
+        onClick={onClose} 
+      />
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0, y: 20 }} 
+        animate={{ scale: 1, opacity: 1, y: 0 }} 
+        exit={{ scale: 0.9, opacity: 0, y: 20 }} 
+        className="bg-white/95 w-full max-w-2xl rounded-[32px] border border-ink/10 p-6 md:p-10 relative z-10 max-h-[85vh] overflow-hidden shadow-2xl flex flex-col"
+      >
+        <button onClick={onClose} className="absolute top-6 right-6 text-sage hover:text-forest transition-colors"><X size={28} /></button>
+        
+        <div className="mb-8 pr-12 text-left">
+          <h2 className="text-3xl md:text-4xl font-serif text-forest">Your Active Connections</h2>
+          <p className="text-sage text-[10px] uppercase tracking-[0.3em] font-black mt-2">ALT Community Pulse</p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto pr-2 no-scrollbar space-y-12 pb-8">
+          {myClaims.length > 0 && (
+            <div className="space-y-6">
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-sage/60 shrink-0">Neighborhood Support</span>
+                <div className="h-px bg-sage/10 flex-1" />
+              </div>
+              <div className="space-y-4">
+                {myClaims.map((item: any) => (
+                  <DeedModalCard 
+                    key={item.id} 
+                    item={item} 
+                    processingId={processingId} 
+                    onClaim={onClaim} 
+                    onHelpClaim={onHelpClaim} 
+                    onReqClaim={onReqClaim} 
+                    onResolve={onResolve} 
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {myActiveRequests.length > 0 && (
+            <div className="space-y-6">
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-amber-600/60 shrink-0">Help For You</span>
+                <div className="h-px bg-amber-200/30 flex-1" />
+              </div>
+              <div className="space-y-4">
+                {myActiveRequests.map((item: any) => (
+                  <DeedModalCard 
+                    key={item.id} 
+                    item={item} 
+                    processingId={processingId} 
+                    onClaim={onClaim} 
+                    onHelpClaim={onHelpClaim} 
+                    onReqClaim={onReqClaim} 
+                    onResolve={onResolve} 
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function DeedModalCard({ item, processingId, onClaim, onHelpClaim, onReqClaim, onResolve }: any) {
+  const isGettingHelp = item.category === 'Getting Help';
+  
+  const handleComplete = () => {
+    if (processingId === item.id) return;
+    if (item.category === 'Freebie') onClaim(item.id, true);
+    else if (item.category === 'Help Offer') onHelpClaim(item.id, true);
+    else if (item.category === 'Help Request') onReqClaim(item.id, true);
+    else if (item.category === 'Getting Help') onResolve(item.id);
+  };
+
+  const contactLink = item.realPhone ? `tel:${item.realPhone}` : 
+                     (item.realEmail ? `mailto:${item.realEmail}` : 
+                     (item.phone ? `tel:${item.phone}` : 
+                     (item.email ? `mailto:${item.email}` : 
+                     (item.helperPhone ? `tel:${item.helperPhone}` : 
+                     (item.helperEmail ? `mailto:${item.helperEmail}` : null)))));
+
+  return (
+    <div className={`w-full relative bg-paper rounded-[32px] border transition-all p-8 shadow-sm flex flex-col gap-8 ${isGettingHelp ? 'border-amber-200/50 hover:shadow-md' : 'border-sage/20 hover:shadow-md'}`}>
+      {/* X Button for canceling/closing */}
+      <button 
+        className="absolute top-4 right-4 text-sage/30 hover:text-red-400 transition-colors p-2"
+        aria-label="Cancel Connection"
+      >
+        <X size={20} />
+      </button>
+
+      <div className="flex flex-col items-start gap-4 pr-10">
+        <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm ${isGettingHelp ? 'bg-amber-500 text-white' : 'bg-forest text-paper'}`}>
+          {item.category}
+        </span>
+        
+        <div className="text-left w-full">
+          <h4 className="font-serif text-2xl font-bold text-forest leading-tight mb-2">
+            {item.title}
+          </h4>
+          <div className="flex flex-col text-sage font-bold text-[11px] uppercase tracking-[0.2em] leading-relaxed">
+            <span className="text-forest/90">{item.helperName || item.businessName || item.userName}</span>
+            {item.streetName && <p className="italic opacity-70 mt-0.5">ALT Resident • {item.streetName}</p>}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6 border-t border-sand">
+        {contactLink && (
+          <a 
+            href={contactLink}
+            className={`w-full py-5 rounded-2xl font-bold text-[12px] uppercase tracking-widest text-center border transition-all flex items-center justify-center gap-3 ${isGettingHelp ? 'bg-white text-amber-900 border-amber-300 hover:bg-amber-100 shadow-sm' : 'bg-paper text-forest border-forest hover:bg-sand/30 shadow-sm'}`}
+          >
+            <MessageSquare size={18} /> Send Message
+          </a>
+        )}
+        <button 
+          onClick={handleComplete}
+          disabled={processingId === item.id}
+          className={`w-full py-5 rounded-2xl font-bold text-[12px] uppercase tracking-widest text-center shadow-lg active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50 ${isGettingHelp ? 'bg-amber-500 text-white shadow-amber-200/50 hover:bg-amber-600' : 'bg-forest text-paper shadow-forest/10 hover:opacity-90'}`}
+        >
+          {processingId === item.id ? (
+            <Loader2 size={18} className="animate-spin" />
+          ) : (
+            <CheckCircle2 size={18} />
+          )} 
+          {isGettingHelp ? 'Mark as Resolved' : 'Mark as Done'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Modal({ title, children, onClose }: { title: string, children: React.ReactNode, onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-ink/40 backdrop-blur-sm" onClick={onClose} />
-      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-paper w-full max-w-md rounded-[40px] border border-ink p-10 relative z-10 max-h-[90vh] overflow-y-auto shadow-soft-glow">
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-paper w-full max-w-md rounded-[40px] border border-ink p-8 relative z-10 max-h-[90vh] overflow-y-auto shadow-soft-glow">
         <button onClick={onClose} className="absolute top-6 right-6 text-sage hover:text-forest"><X size={24} /></button>
         <h2 className="text-3xl font-serif text-forest mb-6">{title}</h2>
         {children}
@@ -1626,7 +2110,7 @@ function Input({ label, value, onChange, placeholder, type = "text" }: { label: 
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full p-4 rounded-2xl border-2 border-sage bg-sand/10 font-medium focus:outline-none focus:border-forest"
+        className="w-full py-3 px-4 rounded-2xl border-2 border-sage bg-sand/10 font-medium focus:outline-none focus:border-forest"
       />
     </div>
   );
@@ -1641,7 +2125,7 @@ function TextArea({ label, value, onChange, placeholder }: { label: string, valu
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full p-4 rounded-2xl border-2 border-sage bg-sand/10 font-medium focus:outline-none focus:border-forest h-32"
+        className="w-full py-3 px-4 rounded-2xl border-2 border-sage bg-sand/10 font-medium focus:outline-none focus:border-forest h-32"
       />
     </div>
   );
@@ -1671,6 +2155,118 @@ function SubmitButton({ loading, children }: { loading: boolean, children: React
   );
 }
 
+function EmptyState({ message }: { message: string }) {
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="py-20 flex flex-col items-center justify-center text-center px-6"
+    >
+      <div className="w-16 h-16 bg-sand rounded-[30%_70%_70%_30%/50%_40%_60%_40%] flex items-center justify-center text-sage mb-6 shadow-soft-glow">
+        <Coffee size={32} />
+      </div>
+      <p className="font-serif text-2xl text-forest max-w-sm leading-tight italic">
+        {message}
+      </p>
+    </motion.div>
+  );
+}
+
+function SuccessToast({ message }: { message: string }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 50, scale: 0.9 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 20, scale: 0.9 }}
+      className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[300] px-6 py-3 bg-paper border border-forest/20 rounded-full shadow-soft-glow flex items-center gap-3"
+    >
+      <span className="w-2 h-2 bg-sage rounded-full animate-pulse" />
+      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-forest">{message}</span>
+    </motion.div>
+  );
+}
+
+function CalendarGrid({ events, selectedDate, onSelectDate }: { events: any[], selectedDate: string | null, onSelectDate: (date: string | null) => void }) {
+  const [currentDate] = useState(new Date());
+  
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  
+  const firstDayOfMonth = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  
+  const days = [];
+  for (let i = 0; i < firstDayOfMonth; i++) {
+    days.push(null);
+  }
+  for (let i = 1; i <= daysInMonth; i++) {
+    days.push(i);
+  }
+  
+  const monthName = currentDate.toLocaleString('default', { month: 'long' });
+  
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-sand/40 p-6 md:p-8 rounded-[40px] border-2 border-sage/10 shadow-inner mb-8 w-full max-w-2xl mx-auto"
+    >
+      <div className="flex justify-center items-center py-4 mb-2">
+        <h3 className="text-2xl md:text-3xl font-serif text-forest tracking-tight">{monthName} {year}</h3>
+      </div>
+      
+      <div className="grid grid-cols-7 gap-1 md:gap-2 mb-4 max-w-lg mx-auto">
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+          <div key={d} className="text-center text-[8px] md:text-[10px] font-black uppercase tracking-widest text-sage/40">{d}</div>
+        ))}
+        {days.map((day, idx) => {
+          if (day === null) return <div key={`empty-${idx}`} />;
+          
+          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          const isSelected = selectedDate === dateStr;
+          const dayEvents = events.filter(e => e.date === dateStr);
+          const hasEvents = dayEvents.length > 0;
+          
+          return (
+            <button
+              key={idx}
+              onClick={() => onSelectDate(isSelected ? null : dateStr)}
+              className={`aspect-square flex flex-col items-center justify-center rounded-xl md:rounded-2xl transition-all relative group shadow-sm ${
+                isSelected 
+                  ? "bg-forest text-paper shadow-xl scale-110 z-10" 
+                  : "bg-paper text-forest hover:bg-white hover:shadow-md border border-sage/5"
+              }`}
+            >
+              <span className={`text-xs md:text-sm font-bold ${isSelected ? "font-black" : ""}`}>{day}</span>
+              {hasEvents && (
+                <div className={`w-1 h-1 rounded-full mt-1 ${isSelected ? "bg-paper" : "bg-forest animate-pulse"}`} />
+              )}
+              {isSelected && (
+                <motion.div layoutId="calendar-ring" className="absolute inset-0 border-2 border-forest rounded-xl md:rounded-2xl -m-1 pointer-events-none" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+      
+      {selectedDate && (
+        <div className="flex flex-col sm:flex-row items-center justify-between mt-4 px-2 gap-3">
+          <p className="text-[10px] font-black text-forest uppercase tracking-widest text-center sm:text-left">
+            Filtering for {selectedDate.split('-')[1]}/{selectedDate.split('-')[2]}
+          </p>
+          <button 
+            onClick={() => onSelectDate(null)}
+            className="flex items-center gap-2 px-4 py-1.5 bg-sand/20 text-forest/60 border border-forest/10 rounded-full hover:bg-forest hover:text-paper hover:opacity-100 transition-all text-[8px] font-black uppercase tracking-widest group/reset"
+          >
+            <X size={10} className="group-hover/reset:rotate-90 transition-transform" />
+            Reset Filter
+          </button>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
 function EventCard({ event, isOwner, onEdit, onDelete }: { event: any, isOwner?: boolean, onEdit?: () => void, onDelete?: () => void, key?: any }) {
   const [isExpanded, setIsExpanded] = React.useState(false);
   const parseDate = (dateStr: string) => {
@@ -1692,150 +2288,169 @@ function EventCard({ event, isOwner, onEdit, onDelete }: { event: any, isOwner?:
   return (
     <div 
       onClick={() => setIsExpanded(!isExpanded)}
-      className={`bg-paper p-4 md:p-6 rounded-[32px] border-2 flex flex-row gap-4 md:gap-6 shadow-soft-glow transition-all group overflow-hidden cursor-pointer relative ${isExpanded ? 'border-forest/40 ring-2 ring-forest/5 shadow-md' : 'border-sage/20 hover:border-forest/30'}`}
+      className={`bg-white/85 p-6 rounded-[32px] border relative overflow-hidden group hover:border-forest/20 transition-all shadow-soft-glow cursor-pointer ${isExpanded ? 'border-forest/30' : 'border-black/5'}`}
     >
-      {/* Sidebar Calendar Badge */}
-      <div className="flex-shrink-0 flex flex-col items-center justify-center w-14 md:w-20 h-20 md:h-24 bg-sand/30 rounded-2xl border-2 border-forest/10 overflow-hidden text-center shadow-inner group-hover:border-forest/30 transition-all self-start mt-1">
-        <div className="bg-forest w-full py-0.5 md:py-1 text-[8px] md:text-[10px] font-black text-paper uppercase tracking-widest">{month}</div>
-        <div className="flex-1 flex items-center justify-center text-xl md:text-3xl font-serif text-forest lining-nums">{day}</div>
+      {/* Category Tag - Top Left */}
+      <div className="flex justify-start mb-4">
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-sand/30 text-forest rounded-full text-[8px] font-black uppercase tracking-[0.2em] border border-forest/5 shadow-sm">
+          EVENT
+        </span>
       </div>
 
-      <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
-        <div className="space-y-3">
-          <div className="flex justify-between items-start gap-4">
-            <div className="space-y-1 min-w-0 flex-1">
-              <h4 className={`font-serif text-xl md:text-2xl text-forest leading-tight group-hover:text-forest/80 transition-colors ${isExpanded ? 'whitespace-normal' : 'truncate'}`}>
-                {event.title}
-              </h4>
-              
-              <div className="flex flex-col gap-1 md:gap-1.5 pt-1">
-                {event.location && (
-                  <div className="inline-flex items-center gap-1.5 text-[9px] md:text-[10px] font-bold text-sage uppercase tracking-widest">
-                    <MapPin size={12} className="text-forest flex-shrink-0" /> 
-                    <span className="truncate">{event.location}</span>
-                  </div>
-                )}
-                <div className="inline-flex items-center gap-1.5 text-[9px] md:text-[10px] font-bold text-sage uppercase tracking-widest">
-                  <Clock size={12} className="text-forest flex-shrink-0" /> 
-                  <span>{event.time}</span>
-                </div>
-              </div>
-            </div>
-            
-            <div className="hidden sm:flex items-center gap-2 text-sage/40 flex-shrink-0">
-              <Sparkles size={16} />
-            </div>
-          </div>
-
-          <motion.div 
-            initial={false}
-            animate={{ height: "auto" }}
-            className="overflow-hidden"
-          >
-            <p className={`text-sm text-ink/70 font-medium leading-relaxed whitespace-normal break-words transition-all duration-300 ${!isExpanded ? 'line-clamp-2 md:line-clamp-2' : ''}`}>
-              {event.description}
-            </p>
-          </motion.div>
+      {/* Branding Anchor Blob - Top Right */}
+      <div className="absolute top-4 right-4">
+        <div className="flex-shrink-0 flex flex-col items-center justify-center w-14 h-16 bg-sand rounded-[30%_70%_70%_30%/50%_40%_60%_40%] border border-sage/10 overflow-hidden text-center shadow-soft-glow">
+          <div className="bg-forest w-full py-0.5 text-[8px] font-black text-paper uppercase tracking-widest">{month}</div>
+          <div className="flex-1 flex items-center justify-center text-xl font-serif text-forest lining-nums">{day}</div>
         </div>
+      </div>
+
+      {/* Left-Aligned Typography */}
+      <div className="pr-16 text-left space-y-3">
+        <h4 className="font-serif text-2xl font-semibold text-forest leading-tight group-hover:text-forest/80 transition-colors">
+          {event.title}
+        </h4>
         
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-forest/5 mt-4">
-          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-            {!isOwner && event.email && (
-              <a 
-                href={`mailto:${event.email}?subject=Inquiry about neighborhood event: ${event.title}`}
-                className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl font-bold text-[9px] md:text-[10px] uppercase tracking-widest transition-all shadow-sm ${isExpanded ? 'bg-forest text-paper ring-4 ring-forest/10 scale-105' : 'bg-forest/10 text-forest hover:bg-forest hover:text-paper'}`}
-              >
-                <MessageCircle size={14} /> Message Organizer
-              </a>
-            )}
-            
-            {isOwner && (
-              <div className="flex gap-2">
-                <button 
-                  onClick={onEdit}
-                  className="px-3 md:px-4 py-2 bg-sand text-forest rounded-xl font-bold text-[9px] md:text-[10px] uppercase tracking-widest hover:bg-forest hover:text-paper transition-all shadow-sm"
-                >
-                  Edit
-                </button>
-                <button 
-                  onClick={onDelete}
-                  className="px-3 md:px-4 py-2 bg-red-50 text-red-500 rounded-xl font-bold text-[9px] md:text-[10px] uppercase tracking-widest hover:bg-red-500 hover:text-paper transition-all shadow-sm"
-                >
-                  Remove
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="hidden xs:block text-[8px] md:text-[10px] font-bold uppercase tracking-widest text-sage/70 italic">
-            {isExpanded ? 'Full Details' : 'Tap to Expand'}
+        <div className="flex flex-col gap-1.5">
+          {event.location && (
+            <div className="flex items-center gap-1.5 text-[10px] font-black text-sage uppercase tracking-widest">
+              <MapPin size={12} className="text-forest" /> 
+              <span className="truncate">{event.location}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-1.5 text-[10px] font-semibold text-sage uppercase tracking-widest shadow-text-pop">
+            <Clock size={12} className="text-forest" /> 
+            <span>{event.time}</span>
           </div>
         </div>
 
-        {/* Visual Cue */}
-        <div className="flex justify-center mt-2 md:hidden">
-          <motion.div
-            animate={{ rotate: isExpanded ? 180 : 0 }}
-            className="text-sage/40"
-          >
-            <ChevronDown size={16} />
-          </motion.div>
+        <motion.div 
+          animate={{ height: isExpanded ? "auto" : "3rem" }}
+          className="overflow-hidden"
+        >
+          <p className="text-sm text-ink/80 font-medium leading-relaxed">
+            {event.description}
+          </p>
+        </motion.div>
+      </div>
+      
+      <div className="flex items-center justify-between mt-6 pt-4 border-t border-sand/50">
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          {!isOwner && event.email && (
+            <a 
+              href={`mailto:${event.email}`}
+              className="px-4 py-2 bg-forest text-paper rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-forest/90 transition-all shadow-md"
+            >
+              Contact Organizer
+            </a>
+          )}
+          
+          {isOwner && (
+            <div className="flex gap-2">
+              <button 
+                onClick={onEdit}
+                className="px-4 py-2 bg-sand text-forest rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-forest hover:text-paper transition-all border border-forest/10"
+              >
+                Edit
+              </button>
+              <button 
+                onClick={onDelete}
+                className="px-4 py-2 bg-red-50 text-red-500 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-red-500 hover:text-paper transition-all border border-red-100"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="text-sage/30">
+          <ChevronDown size={16} className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
         </div>
       </div>
     </div>
   );
 }
 
-function HelpOfferCard({ offer, isClaimed, onClaim, isLoading, isOwner, onEdit, onDelete }: { offer: any, isClaimed?: boolean, onClaim?: () => void, isLoading?: boolean, key?: any, isOwner?: boolean, onEdit?: () => void, onDelete?: () => void }) {
+function HelpOfferCard({ offer, isClaimed, onClaim, isLoading, isOwner, onEdit, onDelete, onViewClaims }: { offer: any, isClaimed?: boolean, onClaim?: () => void, isLoading?: boolean, key?: any, isOwner?: boolean, onEdit?: () => void, onDelete?: () => void, onViewClaims?: () => void }) {
+  const Icon = offer.natureIcon ? NATURE_ICONS[offer.natureIcon] : HeartHandshake;
+
   return (
-    <div className="bg-paper p-6 rounded-3xl border border-forest/20 space-y-4 shadow-soft-glow hover:shadow-md transition-all">
-      <div className="flex justify-between items-start">
-        <div className="flex items-center gap-2">
-          <h4 className="font-serif text-xl text-forest">{offer.capacity}</h4>
-          {offer.claimedBy?.length > 0 && (
-            <span className="text-[8px] font-bold text-sage uppercase bg-sand p-1 rounded">
-              {offer.claimedBy.length} claimed
-            </span>
-          )}
-        </div>
-        <div className="flex flex-col items-end gap-1">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-sage">{offer.userName}</span>
-          {isOwner && <span className="text-[7px] font-black uppercase text-amber-600 tracking-tighter">Your Post</span>}
+    <div className="bg-white/85 p-6 rounded-[32px] border border-black/5 relative overflow-hidden group hover:border-forest/20 transition-all shadow-soft-glow">
+      {/* Category Tag - Top Left */}
+      <div className="flex justify-start mb-4">
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-sand/30 text-forest rounded-full text-[8px] font-black uppercase tracking-[0.2em] border border-forest/5 shadow-sm">
+          HELP OFFER
+        </span>
+      </div>
+
+      {/* Branding Anchor Blob - Top Right */}
+      <div className="absolute top-4 right-4">
+        <div className="w-12 h-12 bg-sand rounded-[30%_70%_70%_30%/50%_40%_60%_40%] text-forest flex items-center justify-center border border-sage/10 shadow-soft-glow">
+          <Icon size={20} />
         </div>
       </div>
-      <p className="text-sm text-ink/70 font-medium leading-relaxed">{offer.description}</p>
-      
-      {offer.contactPreference && (
-        <div className="bg-sand/30 p-4 rounded-2xl border border-forest/10">
-          <div className="text-[8px] uppercase tracking-widest text-forest font-bold mb-1">Contact Preference</div>
-          <p className="text-xs text-forest/80 italic">{offer.contactPreference}</p>
-        </div>
-      )}
 
-      {isOwner ? (
-        <div className="flex gap-2 pt-2 border-t border-sand">
-          <button 
-            onClick={onEdit}
-            className="flex-1 py-3 bg-paper border-2 border-sand text-forest rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-sand transition-all"
-          >
-            Edit Post
-          </button>
-          <button 
-            onClick={onDelete}
-            className="flex-1 py-3 bg-red-50 text-red-500 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-red-500 hover:text-paper transition-all"
-          >
-            Remove
-          </button>
+      {/* Left-Aligned Typography */}
+      <div className="pr-12 text-left space-y-3">
+        <div className="flex flex-col gap-1">
+          <h4 className="font-serif text-2xl font-semibold text-forest leading-tight truncate">{offer.capacity}</h4>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-semibold text-sage uppercase tracking-widest shadow-text-pop">{offer.userName}</span>
+            {offer.claimedBy?.length > 0 && (
+              <span className="text-[8px] font-bold text-forest uppercase bg-forest/5 px-1.5 py-0.5 rounded-full border border-forest/10">
+                {offer.claimedBy.length} claimed
+              </span>
+            )}
+          </div>
         </div>
-      ) : (
-        <button 
-          onClick={onClaim}
-          disabled={isLoading}
-          className={`w-full py-3 border-2 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${isClaimed ? 'bg-forest text-paper border-forest' : 'border-forest text-forest hover:bg-forest hover:text-paper shadow-md shadow-forest/10'}`}
-        >
-          {isLoading ? <Loader2 className="animate-spin" size={14} /> : (isClaimed ? <><CheckCircle2 size={14} /> Claimed</> : "I'm Interested / Help Neighbor")}
-        </button>
-      )}
+
+        <p className="text-sm text-ink/80 font-medium leading-relaxed italic line-clamp-3">
+          {offer.description}
+        </p>
+        
+        {offer.contactPreference && (
+          <div className="bg-sand/20 p-4 rounded-2xl border-l-4 border-forest">
+            <div className="text-[8px] uppercase tracking-widest text-forest font-black mb-1">Contact Preference</div>
+            <p className="text-xs text-forest/80 italic font-medium leading-relaxed">{offer.contactPreference}</p>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between mt-6 pt-4 border-t border-sand/50">
+        <div className="flex-1">
+          {isOwner ? (
+            <div className="flex flex-wrap gap-2">
+              {offer.claimedBy?.length > 0 && (
+                <button 
+                  onClick={onViewClaims}
+                  className="px-4 py-3 bg-sand text-forest rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-forest hover:text-paper transition-all border border-forest/10 flex items-center justify-center gap-2"
+                >
+                  <Users size={14} /> View Claims ({offer.claimedBy.length})
+                </button>
+              )}
+              <button 
+                onClick={onEdit}
+                className="flex-1 py-3 bg-sand text-forest rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-forest hover:text-paper transition-all border border-forest/10"
+              >
+                Edit Post
+              </button>
+              <button 
+                onClick={onDelete}
+                className="flex-1 py-3 bg-red-50 text-red-500 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-red-500 hover:text-paper transition-all border border-red-100"
+              >
+                Remove
+              </button>
+            </div>
+          ) : (
+            <button 
+              onClick={onClaim}
+              disabled={isLoading}
+              className={`w-full py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${isClaimed ? 'bg-forest text-paper shadow-lg shadow-forest/20' : 'bg-forest text-paper hover:bg-forest/90 shadow-soft-glow'}`}
+            >
+              {isLoading ? <Loader2 className="animate-spin" size={14} /> : (isClaimed ? <><CheckCircle2 size={14} /> Claimed</> : <><Plus size={14} /> Interested</>)}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
